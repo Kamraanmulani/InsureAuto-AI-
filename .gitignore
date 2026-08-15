@@ -2,6 +2,10 @@
 *.md
 !README.md
 
+# Ignore other sub-projects on this branch
+backend/
+frontend/
+
 # Python
 __pycache__/
 *.py[cod]
