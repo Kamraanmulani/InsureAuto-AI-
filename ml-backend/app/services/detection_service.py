@@ -9,7 +9,7 @@ class DetectionService:
         self.yolo_detector = YOLODamageDetector()
         # Initialize with Ollama LLaVA 13B
         self.llava_analyzer = LLaVADamageAnalyzer(
-            model_name="llava:13b",
+            model_name="llava:7b",
             ollama_host="http://localhost:11434"
         )
         # Initialize fraud detector - will auto-detect Qdrant from environment

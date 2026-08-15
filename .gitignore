@@ -19,6 +19,8 @@ ENV/
 
 # Virtual environments
 venv/
+venv*/
+venvGPU/
 venv_gpu/
 env/
 ENV/

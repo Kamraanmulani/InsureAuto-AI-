@@ -1,0 +1,62 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual Environments
+venv/
+venv*/
+venvGPU/
+venv_gpu/
+env/
+ENV/
+.venv/
+.env.local
+.env.*.local
+
+# Environment variables
+.env
+
+# Large Model weights
+*.pt
+*.pth
+*.onnx
+*.bin
+*.h5
+*.pkl
+*.safetensors
+yolov10m.pt
+
+# Data directories and uploads
+data/uploads/
+data/qdrant_storage/
+data/mongodb/
+data/model_offload/
+data/*.json
+!data/.gitkeep
+
+# Output and test artifacts
+output_*.jpg
+output_*.png
+output_*.json
+test_output.json
+test_detection_output.json
+
+# Logs & temporary files
+*.log
+logs/
+*.tmp
+*.temp
+*.bak
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# IDE & OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+Desktop.ini
