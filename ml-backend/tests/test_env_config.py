@@ -4,10 +4,14 @@ Verifies that .env file is loaded correctly and all services are accessible
 """
 
 import os
+import sys
+from pathlib import Path
 from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv()
+# Add project root to path and load root .env
+root_dir = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(root_dir))
+load_dotenv(dotenv_path=root_dir / ".env")
 
 print("=" * 70)
 print("🔍 TESTING ENVIRONMENT CONFIGURATION")

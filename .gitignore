@@ -1,6 +1,7 @@
-# Exclude all markdown files except README.md
+# Exclude all markdown files except README.md and Video_Implementation.md
 *.md
 !README.md
+!Video_Implementation.md
 
 # Python
 __pycache__/
@@ -20,6 +21,7 @@ ENV/
 # Virtual environments
 venv/
 venv_gpu/
+venvGPU/
 env/
 ENV/
 .venv
@@ -53,6 +55,9 @@ ml-backend/data/*.json
 ml-backend/output_*.json
 ml-backend/test_output.json
 ml-backend/test_detection_output.json
+ml-backend/tests/test_output.json
+ml-backend/tests/test_detection_output.json
+ml-backend/output/*.json
 
 # Logs
 *.log
