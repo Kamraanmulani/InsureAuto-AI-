@@ -173,6 +173,15 @@ const ClaimsDashboard = () => {
                     <span>📅 {new Date(claim.claimInfo.date).toLocaleDateString()}</span>
                     <span>📍 {claim.claimInfo.location}</span>
                     <span>🆔 {claim.jobId.slice(0, 8)}...</span>
+                    {claim.claimType === 'VIDEO_WALK_AROUND' ? (
+                      <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 text-xs font-medium rounded-full border border-indigo-200">
+                        🎥 Video Walk-Around ({claim.keyframeSelection?.total_selected || claim.videoMetadata?.keyframe_count || 'Multi'}-Frame)
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs font-medium rounded-full">
+                        📷 Photo Claim
+                      </span>
+                    )}
                   </div>
                 </div>
 

@@ -19,13 +19,14 @@ api.interceptors.request.use((config) => {
 });
 
 export const claimAPI = {
-  // Submit new claim
-  submitClaim: async (formData) => {
+  // Submit new claim (supports both Photo and Walk-Around Video)
+  submitClaim: async (formData, onUploadProgress) => {
     const response = await api.post('/claims/analyze', formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       },
-      timeout: 180000 // 3 minutes
+      timeout: 240000, // 4 minutes
+      onUploadProgress
     });
     return response.data;
   },

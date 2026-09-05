@@ -42,19 +42,24 @@ app.get('/', (req, res) => {
 });
 
 // Connect to MongoDB
-mongoose.connect(process.env.MONGODB_URI)
+const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/insurance_claims';
+mongoose.connect(mongoUri)
 .then(() => {
-  console.log('✅ Connected to MongoDB');
+  console.log('[OK] Connected to MongoDB at', mongoUri);
   
   // Start server
   const PORT = process.env.PORT || 5000;
   app.listen(PORT, () => {
-    console.log(`🚀 Backend API running on port ${PORT}`);
+    console.log(`[OK] Backend API running on port ${PORT}`);
   });
 })
 .catch((error) => {
-  console.error('❌ MongoDB connection error:', error);
-  process.exit(1);
+  console.warn('[WARN] MongoDB connection error:', error.message);
+  console.log('Starting Express server anyway for API routing...');
+  const PORT = process.env.PORT || 5000;
+  app.listen(PORT, () => {
+    console.log(`[OK] Backend API running on port ${PORT} (MongoDB in offline/mock mode)`);
+  });
 });
 
 // Handle unhandled promise rejections

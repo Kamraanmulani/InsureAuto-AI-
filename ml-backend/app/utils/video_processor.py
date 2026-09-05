@@ -125,14 +125,21 @@ class VideoProcessor:
                 "codec": codec or "unknown"
             })
 
-            # Check minimum resolution (support both landscape and portrait orientations)
+            # Check minimum resolution (support landscape, portrait, and widescreen aspect ratio encodings like 848x478, 854x480)
             min_w, min_h = self.min_resolution
             longer_edge = max(width, height)
             shorter_edge = min(width, height)
             req_longer = max(min_w, min_h)
             req_shorter = min(min_w, min_h)
+            
+            # Widescreen 480p often encodes to 848x478 or 854x480 (macroblock alignment)
+            # Accept if total resolution is comparable or longer edge is sufficiently high
+            is_valid_resolution = (
+                (longer_edge >= req_longer and shorter_edge >= int(req_shorter * 0.80)) or
+                (width * height >= int(min_w * min_h * 0.75) and shorter_edge >= 360)
+            )
 
-            if longer_edge < req_longer or shorter_edge < req_shorter:
+            if not is_valid_resolution:
                 errors.append(
                     f"Video resolution ({width}x{height}) is below minimum requirement ({min_w}x{min_h})"
                 )

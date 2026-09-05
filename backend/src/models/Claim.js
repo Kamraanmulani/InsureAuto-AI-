@@ -6,6 +6,11 @@ const claimSchema = new mongoose.Schema({
     required: true,
     unique: true
   },
+  claimType: {
+    type: String,
+    enum: ['PHOTO_IMAGE', 'VIDEO_WALK_AROUND'],
+    default: 'PHOTO_IMAGE'
+  },
   claimInfo: {
     date: { type: String, required: true },
     description: { type: String, required: true },
@@ -13,19 +18,45 @@ const claimSchema = new mongoose.Schema({
     policyId: { type: String }
   },
   metadata: {
+    // Image EXIF metadata fields
     has_exif: Boolean,
     timestamp: String,
     camera_make: String,
     camera_model: String,
     software: String,
-    file_size_mb: Number
+    file_size_mb: Number,
+    // Video container metadata fields
+    duration_seconds: Number,
+    fps: Number,
+    frame_count: Number,
+    width: Number,
+    height: Number,
+    aspect_ratio: String,
+    codec: String,
+    created_at: String,
+    modified_at: String,
+    has_video_stream: Boolean
+  },
+  keyframeSelection: {
+    primaryPath: String,
+    secondaryPath: String,
+    compositePath: String,
+    llavaMode: String,
+    ranking: [mongoose.Schema.Types.Mixed],
+    summary: String
   },
   analysis: {
     damageAssessment: {
       severity: String,
       damagedParts: [String],
       description: String,
-      score: Number
+      recommendation: String,
+      score: Number,
+      yoloAggregate: {
+        areaCoverageRatio: Number,
+        meanConfidence: Number,
+        totalKeyframeDetections: Number
+      }
     },
     fraudAnalysis: {
       overallScore: Number,
@@ -36,6 +67,18 @@ const claimSchema = new mongoose.Schema({
         metadataScore: Number,
         duplicateScore: Number,
         consistencyScore: Number
+      },
+      videoDuplicateCheck: {
+        isDuplicate: Boolean,
+        similarityScore: Number,
+        crossPolicyReuse: Boolean,
+        isMirrored: Boolean,
+        duplicateDetails: [mongoose.Schema.Types.Mixed]
+      },
+      metadataFraud: {
+        score: Number,
+        editingSoftwareDetected: Boolean,
+        editingTools: [String]
       }
     },
     consistencyAnalysis: {
@@ -51,13 +94,17 @@ const claimSchema = new mongoose.Schema({
     },
     confidence: String,
     explanation: String,
+    reasons: [String],
     scores: {
       damage: Number,
       fraud: Number,
       consistency: Number
-    }
+    },
+    pillarBreakdown: mongoose.Schema.Types.Mixed
   },
   annotatedImagePath: String,
+  primaryAnnotatedKeyframeUrl: String,
+  keyframeTimeline: [mongoose.Schema.Types.Mixed],
   status: {
     type: String,
     enum: ['PENDING', 'PROCESSED', 'REVIEWED', 'APPROVED', 'REJECTED'],
@@ -79,6 +126,7 @@ const claimSchema = new mongoose.Schema({
 // Index for faster queries
 claimSchema.index({ 'claimInfo.policyId': 1 });
 claimSchema.index({ 'decision.recommendation': 1 });
+claimSchema.index({ claimType: 1 });
 claimSchema.index({ status: 1 });
 
 module.exports = mongoose.model('Claim', claimSchema);

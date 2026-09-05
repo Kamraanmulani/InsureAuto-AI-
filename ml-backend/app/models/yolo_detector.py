@@ -29,7 +29,7 @@ class YOLODamageDetector:
             'missing': ['missing', 'detached', 'fallen']
         }
         
-        print("✅ YOLO model loaded successfully")
+        print("[OK] YOLO model loaded successfully")
     
     def detect_objects(self, image_path: str, conf_threshold: float = 0.25) -> List[Dict[str, Any]]:
         """Detect objects and potential damage in image"""
@@ -264,6 +264,160 @@ class YOLODamageDetector:
 
         return candidate_keyframes
 
+    # =========================================================================
+    # STEP 4: SMART KEYFRAME RANKING & SELECTION
+    # =========================================================================
+
+    def _bboxes_overlap(self, bbox1: List[int], bbox2: List[int], iou_threshold: float = 0.3) -> bool:
+        """
+        Check if two bounding boxes overlap significantly using IoU.
+        Used to determine if two frames show damage in distinct regions.
+        """
+        x1 = max(bbox1[0], bbox2[0])
+        y1 = max(bbox1[1], bbox2[1])
+        x2 = min(bbox1[2], bbox2[2])
+        y2 = min(bbox1[3], bbox2[3])
+
+        inter_area = max(0, x2 - x1) * max(0, y2 - y1)
+        if inter_area == 0:
+            return False
+
+        area1 = (bbox1[2] - bbox1[0]) * (bbox1[3] - bbox1[1])
+        area2 = (bbox2[2] - bbox2[0]) * (bbox2[3] - bbox2[1])
+        union_area = area1 + area2 - inter_area
+
+        return (inter_area / max(1, union_area)) >= iou_threshold
+
+    def _frames_are_visually_diverse(
+        self,
+        primary_keyframe: Dict[str, Any],
+        candidate_keyframe: Dict[str, Any],
+        iou_threshold: float = 0.3
+    ) -> bool:
+        """
+        Return True if candidate shows damage on a sufficiently distinct region
+        compared to the primary keyframe (low bounding-box overlap).
+        """
+        primary_bboxes = [d["bbox"] for d in primary_keyframe.get("detections", [])]
+        candidate_bboxes = [d["bbox"] for d in candidate_keyframe.get("detections", [])]
+
+        if not primary_bboxes or not candidate_bboxes:
+            return True  # No detections to compare - treat as distinct
+
+        # If any candidate bbox overlaps significantly with any primary bbox, not diverse
+        for cb in candidate_bboxes:
+            for pb in primary_bboxes:
+                if self._bboxes_overlap(pb, cb, iou_threshold):
+                    return False
+        return True
+
+    def select_top_keyframes(
+        self,
+        scanned_keyframes: List[Dict[str, Any]],
+        job_id: str,
+        output_dir: str = "data/uploads/keyframes",
+        max_keyframes: int = 2,
+        diversity_iou_threshold: float = 0.3
+    ) -> Dict[str, Any]:
+        """
+        Step 4: Smart Keyframe Ranking & Selection.
+
+        Ranks YOLO-scanned keyframes by damage salience score, selects the
+        primary (highest salience) and an optional diverse secondary keyframe
+        (showing a distinct damage region via IoU check), then saves annotated
+        keyframe JPEGs to disk.
+
+        Args:
+            scanned_keyframes:      Output of scan_video_frames() - list of keyframe
+                                    dicts already enriched with 'detections',
+                                    'analysis', and 'salience_score'.
+            job_id:                 Unique job ID used to name output files.
+            output_dir:             Directory to write annotated keyframe images.
+            max_keyframes:          Maximum number of keyframes to keep (1 or 2).
+            diversity_iou_threshold: Min IoU below which frames are considered diverse.
+
+        Returns:
+            Dict with keys:
+                - primary:          Primary keyframe dict (highest salience).
+                - secondary:        Secondary keyframe dict or None.
+                - primary_path:     Absolute path to saved annotated primary frame.
+                - secondary_path:   Absolute path to saved annotated secondary frame or None.
+                - ranking:          Full sorted list of keyframes with salience scores.
+                - summary:          Human-readable selection summary.
+        """
+        if not scanned_keyframes:
+            return {
+                "primary": None,
+                "secondary": None,
+                "primary_path": None,
+                "secondary_path": None,
+                "ranking": [],
+                "summary": "No candidate keyframes available for ranking."
+            }
+
+        os.makedirs(output_dir, exist_ok=True)
+
+        # --- Sort all frames by salience score descending ---
+        ranked = sorted(scanned_keyframes, key=lambda x: x.get("salience_score", 0.0), reverse=True)
+
+        # --- Select primary keyframe ---
+        primary = ranked[0]
+        primary_path = os.path.join(output_dir, f"{job_id}_keyframe_primary.jpg")
+        self.generate_annotated_frame(primary["frame"], primary["detections"], output_path=primary_path)
+
+        print(f"  ✓ Primary keyframe selected: t={primary['timestamp_sec']}s, "
+              f"salience={primary['salience_score']}, "
+              f"detections={len(primary['detections'])}")
+
+        # --- Select secondary keyframe (optional, diverse angle) ---
+        secondary = None
+        secondary_path = None
+
+        if max_keyframes >= 2 and len(ranked) > 1:
+            for candidate in ranked[1:]:
+                if candidate.get("salience_score", 0.0) > 0 and self._frames_are_visually_diverse(
+                    primary, candidate, iou_threshold=diversity_iou_threshold
+                ):
+                    secondary = candidate
+                    secondary_path = os.path.join(output_dir, f"{job_id}_keyframe_secondary.jpg")
+                    self.generate_annotated_frame(
+                        secondary["frame"], secondary["detections"], output_path=secondary_path
+                    )
+                    print(f"  ✓ Secondary keyframe selected: t={secondary['timestamp_sec']}s, "
+                          f"salience={secondary['salience_score']}, "
+                          f"detections={len(secondary['detections'])}")
+                    break
+
+        if secondary is None:
+            print("  ℹ  No diverse secondary keyframe found; proceeding with primary only.")
+
+        # --- Build compact ranking summary (timestamps + scores only) ---
+        ranking_summary = [
+            {
+                "rank": idx + 1,
+                "timestamp_sec": kf["timestamp_sec"],
+                "salience_score": kf["salience_score"],
+                "num_detections": len(kf.get("detections", []))
+            }
+            for idx, kf in enumerate(ranked)
+        ]
+
+        return {
+            "primary": primary,
+            "secondary": secondary,
+            "primary_path": primary_path,
+            "secondary_path": secondary_path,
+            "ranking": ranking_summary,
+            "summary": (
+                f"Selected {1 if secondary is None else 2} keyframe(s) from "
+                f"{len(scanned_keyframes)} candidates. "
+                f"Primary at t={primary['timestamp_sec']}s "
+                f"(salience={primary['salience_score']})."
+                + (f" Secondary at t={secondary['timestamp_sec']}s "
+                   f"(salience={secondary['salience_score']})." if secondary else "")
+            )
+        }
+
     def generate_annotated_frame(
         self,
         frame: np.ndarray,
@@ -306,4 +460,9 @@ class YOLODamageDetector:
             os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
             cv2.imwrite(output_path, annotated)
 
-        return annotated
+        return annotated
+
+
+# Export alias for consistency
+YOLODetector = YOLODamageDetector
+
