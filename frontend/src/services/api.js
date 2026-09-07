@@ -17,6 +17,20 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      if (window.location.pathname !== '/login') {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        window.location.href = '/login';
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
 export const claimAPI = {
   submitClaim: async (formData, onUploadProgress) => {
     const response = await api.post('/claims/analyze', formData, {
@@ -47,11 +61,10 @@ export const claimAPI = {
     return response.data;
   },
 
-  overrideDecision: async (jobId, newRecommendation, reason, assessorId) => {
+  overrideDecision: async (jobId, newRecommendation, reason) => {
     const response = await api.patch(`/claims/${jobId}/override`, {
       newRecommendation,
-      reason,
-      assessorId
+      reason
     });
     return response.data;
   },
@@ -70,6 +83,21 @@ export const authAPI = {
 
   register: async (userData) => {
     const response = await api.post('/auth/register', userData);
+    return response.data;
+  },
+
+  getMe: async () => {
+    const response = await api.get('/auth/me');
+    return response.data;
+  },
+
+  getUsers: async () => {
+    const response = await api.get('/auth/users');
+    return response.data;
+  },
+
+  updateUserRole: async (userId, data) => {
+    const response = await api.patch(`/auth/users/${userId}`, data);
     return response.data;
   }
 };

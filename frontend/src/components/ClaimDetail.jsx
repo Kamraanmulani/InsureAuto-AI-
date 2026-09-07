@@ -67,8 +67,7 @@ const ClaimDetail = () => {
       await claimAPI.overrideDecision(
         jobId,
         overrideData.newRecommendation,
-        overrideData.reason,
-        'ASSESSOR-CURRENT'
+        overrideData.reason
       );
       toast.success('Assessor decision override recorded successfully.');
       setShowOverrideDialog(false);

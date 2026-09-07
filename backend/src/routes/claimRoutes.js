@@ -9,6 +9,10 @@ const {
   overrideDecision,
   getClaimStats
 } = require('../controllers/claimController');
+const { verifyToken, requireRole } = require('../middleware/authMiddleware');
+
+router.use(verifyToken);
+router.use(requireRole('ASSESSOR', 'ADMIN'));
 
 router.post('/analyze', upload.any(), analyzeClaim);
 router.get('/', getClaims);

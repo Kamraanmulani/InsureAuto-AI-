@@ -1,15 +1,17 @@
 import React, { useState } from 'react';
 import { toast } from 'react-toastify';
 import axios from 'axios';
+import { useAuth } from '../context/AuthContext';
 
 const SettingsPage = () => {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('profile');
   const [profileData, setProfileData] = useState({
-    name: 'John Doe',
-    email: 'j.doe@claimsight.internal',
-    assessorId: 'ASR-8842',
-    role: 'Senior Motor Claims Assessor',
-    office: 'Northeast Claims Operations'
+    name: user?.name || 'Assessor',
+    email: user?.email || '',
+    assessorId: user?.id || 'AUTH-SESSION',
+    role: user?.role || 'ASSESSOR',
+    office: 'Claims Operations'
   });
 
   const [preferences, setPreferences] = useState({
@@ -45,7 +47,8 @@ const SettingsPage = () => {
   const checkSystemHealth = async () => {
     setHealthLoading(true);
     try {
-      const backendRes = await axios.get('http://localhost:5000/api/claims', { timeout: 3000 }).then(() => 'Operational').catch(() => 'Degraded');
+      const token = localStorage.getItem('token');
+      const backendRes = await axios.get('http://localhost:5000/health', { timeout: 3000 }).then(() => 'Operational').catch(() => 'Degraded');
       const mlRes = await axios.get('http://localhost:8000/docs', { timeout: 3000 }).then(() => 'Operational').catch(() => 'Degraded');
       setHealthStatus({
         backend: backendRes,
@@ -107,20 +110,23 @@ const SettingsPage = () => {
         >
           Notifications
         </button>
-        <button
-          type="button"
-          onClick={() => {
-            setActiveTab('health');
-            if (!healthStatus) checkSystemHealth();
-          }}
-          className={`pb-3 transition-colors border-b-2 ${
-            activeTab === 'health'
-              ? 'border-blue-600 text-slate-900 font-semibold'
-              : 'border-transparent text-slate-400 hover:text-slate-700'
-          }`}
-        >
-          System Health (Admin)
-        </button>
+
+        {user?.role === 'ADMIN' && (
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('health');
+              if (!healthStatus) checkSystemHealth();
+            }}
+            className={`pb-3 transition-colors border-b-2 ${
+              activeTab === 'health'
+                ? 'border-blue-600 text-slate-900 font-semibold'
+                : 'border-transparent text-slate-400 hover:text-slate-700'
+            }`}
+          >
+            System Health (Admin)
+          </button>
+        )}
       </div>
 
       {activeTab === 'profile' && (
@@ -149,9 +155,9 @@ const SettingsPage = () => {
               <label className="block text-slate-600 font-medium mb-1">Email Address</label>
               <input
                 type="email"
+                disabled
                 value={profileData.email}
-                onChange={(e) => setProfileData({ ...profileData, email: e.target.value })}
-                className="w-full bg-white border border-slate-200 rounded px-3 py-2 text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-400"
+                className="w-full bg-slate-50 border border-slate-200 rounded px-3 py-2 text-slate-500"
               />
             </div>
             <div>
@@ -160,7 +166,7 @@ const SettingsPage = () => {
                 type="text"
                 disabled
                 value={profileData.role}
-                className="w-full bg-slate-50 border border-slate-200 rounded px-3 py-2 text-slate-700"
+                className="w-full bg-slate-50 border border-slate-200 rounded px-3 py-2 text-slate-700 font-semibold"
               />
             </div>
           </div>
@@ -256,7 +262,7 @@ const SettingsPage = () => {
         </form>
       )}
 
-      {activeTab === 'health' && (
+      {user?.role === 'ADMIN' && activeTab === 'health' && (
         <div className="bg-white border border-slate-200 rounded p-6 space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div>

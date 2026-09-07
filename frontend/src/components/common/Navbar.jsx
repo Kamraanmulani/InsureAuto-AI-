@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { Search, Bell, Settings } from 'lucide-react';
+import { Search, Bell, Settings, LogOut } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 
 const Navbar = () => {
   const navigate = useNavigate();
+  const { user, logout } = useAuth();
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -14,6 +16,20 @@ const Navbar = () => {
       navigate(`/claims?q=${encodeURIComponent(searchQuery.trim())}`);
       setSearchQuery('');
     }
+  };
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
+
+  const getInitials = (name) => {
+    if (!name) return 'U';
+    const parts = name.trim().split(' ');
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[1][0]).toUpperCase();
+    }
+    return name.slice(0, 2).toUpperCase();
   };
 
   return (
@@ -154,19 +170,22 @@ const Navbar = () => {
                 className="flex items-center gap-2 p-1.5 rounded hover:bg-slate-100 text-left"
               >
                 <div className="w-7 h-7 rounded-full bg-slate-800 text-white flex items-center justify-center text-xs font-semibold">
-                  JD
+                  {getInitials(user?.name)}
                 </div>
                 <div className="hidden lg:block leading-tight">
-                  <span className="text-xs font-semibold text-slate-900 block">J. Doe</span>
-                  <span className="text-[11px] text-slate-500 block">Assessor</span>
+                  <span className="text-xs font-semibold text-slate-900 block">{user?.name || 'Assessor'}</span>
+                  <span className="text-[11px] text-slate-500 block">{user?.role || 'ASSESSOR'}</span>
                 </div>
               </button>
 
               {showProfileMenu && (
                 <div className="absolute right-0 mt-2 w-52 bg-white rounded-md shadow-lg border border-slate-200 py-1 z-50 text-xs">
                   <div className="px-3 py-2 border-b border-slate-100">
-                    <p className="font-semibold text-slate-800">John Doe</p>
-                    <p className="text-slate-500 text-[11px]">j.doe@claimsight.internal</p>
+                    <p className="font-semibold text-slate-800">{user?.name || 'Assessor'}</p>
+                    <p className="text-slate-500 text-[11px] truncate">{user?.email || 'authenticated'}</p>
+                    <span className="inline-block mt-1 px-1.5 py-0.5 bg-slate-100 rounded text-[10px] font-medium text-slate-600">
+                      Role: {user?.role || 'ASSESSOR'}
+                    </span>
                   </div>
                   <button
                     type="button"
@@ -178,6 +197,17 @@ const Navbar = () => {
                   >
                     <Settings size={14} />
                     Settings
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowProfileMenu(false);
+                      handleLogout();
+                    }}
+                    className="w-full text-left px-3 py-2 hover:bg-slate-50 text-rose-600 flex items-center gap-2 border-t border-slate-100"
+                  >
+                    <LogOut size={14} />
+                    Sign Out
                   </button>
                 </div>
               )}

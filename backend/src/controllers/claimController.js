@@ -197,7 +197,7 @@ const getClaimById = async (req, res) => {
 const updateClaimStatus = async (req, res) => {
   try {
     const { status, assessorNotes } = req.body;
-    const validStatuses = ['PENDING', 'PROCESSED', 'REVIEWED', 'APPROVED', 'REJECTED'];
+    const validStatuses = ['PENDING', 'PROCESSED', 'REVIEW_REQUIRED', 'REVIEWED', 'APPROVED', 'REJECTED', 'CLOSED'];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ error: 'Invalid status' });
     }
@@ -225,10 +225,14 @@ const updateClaimStatus = async (req, res) => {
 
 const overrideDecision = async (req, res) => {
   try {
-    const { newRecommendation, reason, assessorId } = req.body;
+    const { newRecommendation, reason } = req.body;
     const validRecommendations = ['APPROVE', 'MANUAL_REVIEW', 'REJECT'];
     if (!validRecommendations.includes(newRecommendation)) {
       return res.status(400).json({ error: 'Invalid recommendation' });
+    }
+
+    if (!reason || !reason.trim()) {
+      return res.status(400).json({ error: 'Justification reason is required' });
     }
 
     const claim = await Claim.findOne({ jobId: req.params.jobId });
@@ -236,18 +240,23 @@ const overrideDecision = async (req, res) => {
       return res.status(404).json({ error: 'Claim not found' });
     }
 
+    if (!claim.decision) {
+      claim.decision = {};
+    }
+
     claim.assessorOverride = {
       applied: true,
-      originalRecommendation: claim.decision.recommendation,
+      originalRecommendation: claim.decision.recommendation || 'MANUAL_REVIEW',
       newRecommendation,
-      reason,
-      assessorId: assessorId || (req.user ? req.user.userId : 'ASSESSOR'),
+      reason: reason.trim(),
+      assessorId: req.user.userId,
+      assessorName: req.user.name,
       timestamp: new Date()
     };
 
     claim.decision.recommendation = newRecommendation;
     claim.status = newRecommendation === 'APPROVE' ? 'APPROVED' :
-                   newRecommendation === 'REJECT' ? 'REJECTED' : 'REVIEWED';
+                   newRecommendation === 'REJECT' ? 'REJECTED' : 'REVIEW_REQUIRED';
 
     await claim.save();
 
@@ -256,7 +265,7 @@ const overrideDecision = async (req, res) => {
       claim
     });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to override decision' });
+    res.status(500).json({ error: 'Failed to override decision', details: error.message });
   }
 };
 

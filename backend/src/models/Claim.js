@@ -18,14 +18,12 @@ const claimSchema = new mongoose.Schema({
     policyId: { type: String }
   },
   metadata: {
-    // Image EXIF metadata fields
     has_exif: Boolean,
     timestamp: String,
     camera_make: String,
     camera_model: String,
     software: String,
     file_size_mb: Number,
-    // Video container metadata fields
     duration_seconds: Number,
     fps: Number,
     frame_count: Number,
@@ -107,7 +105,7 @@ const claimSchema = new mongoose.Schema({
   keyframeTimeline: [mongoose.Schema.Types.Mixed],
   status: {
     type: String,
-    enum: ['PENDING', 'PROCESSED', 'REVIEWED', 'APPROVED', 'REJECTED'],
+    enum: ['PENDING', 'PROCESSED', 'REVIEW_REQUIRED', 'REVIEWED', 'APPROVED', 'REJECTED', 'CLOSED'],
     default: 'PROCESSED'
   },
   assessorNotes: String,
@@ -117,13 +115,13 @@ const claimSchema = new mongoose.Schema({
     newRecommendation: String,
     reason: String,
     assessorId: String,
+    assessorName: String,
     timestamp: Date
   }
 }, {
   timestamps: true
 });
 
-// Index for faster queries
 claimSchema.index({ 'claimInfo.policyId': 1 });
 claimSchema.index({ 'decision.recommendation': 1 });
 claimSchema.index({ claimType: 1 });
