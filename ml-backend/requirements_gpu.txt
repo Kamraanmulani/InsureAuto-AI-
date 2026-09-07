@@ -1,0 +1,16 @@
+fastapi
+uvicorn[standard]
+python-multipart
+Pillow
+opencv-python
+numpy
+ultralytics
+transformers
+accelerate
+bitsandbytes
+imagehash
+exifread
+qdrant-client
+python-dotenv
+pydantic
+requests

@@ -1,0 +1,82 @@
+version: '3.8'
+
+services:
+  # Qdrant Vector Database for fraud detection (duplicate image detection)
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - ./ml-backend/data/qdrant_storage:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__HTTP_PORT=6333
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    networks:
+      - claim-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # MongoDB for persistent claim storage (optional - currently using in-memory)
+  mongodb:
+    image: mongo:latest
+    container_name: mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - ./ml-backend/data/mongodb:/data/db
+    environment:
+      - MONGO_INITDB_DATABASE=insurance_claims
+    networks:
+      - claim-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ML Backend API (FastAPI + YOLO + LLaVA)
+  ml-backend:
+    build:
+      context: ./ml-backend
+      dockerfile: Dockerfile
+    container_name: ml-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./ml-backend:/app
+      - ./ml-backend/data:/app/data
+      - ./ml-backend/test_images:/app/test_images
+    depends_on:
+      - qdrant
+      - mongodb
+    environment:
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - MONGODB_URI=mongodb://mongodb:27017/insurance_claims
+      - OLLAMA_HOST=http://host.docker.internal:11434
+    networks:
+      - claim-network
+    restart: unless-stopped
+    # Uncomment for GPU support
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+networks:
+  claim-network:
+    driver: bridge
+
+volumes:
+  qdrant_storage:
+  mongodb_data:

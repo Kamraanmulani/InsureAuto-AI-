@@ -1,0 +1,16 @@
+fastapi
+uvicorn[standard]
+python-multipart
+Pillow
+opencv-python
+numpy
+ultralytics
+torch
+torchvision
+imagehash
+exifread
+piexif
+qdrant-client
+python-dotenv
+pydantic
+requests
