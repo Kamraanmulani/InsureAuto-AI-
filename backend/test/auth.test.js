@@ -20,7 +20,7 @@ const runTests = async () => {
   };
 
   await test('Normal users cannot become admins via registration payload', async () => {
-    const testEmail = `test_assessor_${Date.now()}@claimsight.internal`;
+    const testEmail = `test_assessor_${Date.now()}@insureauto.ai`;
     const res = await axios.post(`${API_URL}/auth/register`, {
       name: 'Attempted Admin',
       email: testEmail,
@@ -57,7 +57,7 @@ const runTests = async () => {
   let assessorUser = null;
   await test('Assessor logs in and receives valid JWT token', async () => {
     const res = await axios.post(`${API_URL}/auth/login`, {
-      email: 'assessor@claimsight.internal',
+      email: 'assessor@insureauto.ai',
       password: 'Password@123'
     });
 
@@ -80,7 +80,7 @@ const runTests = async () => {
   let adminToken = '';
   await test('Admin logs in and receives valid JWT token', async () => {
     const res = await axios.post(`${API_URL}/auth/login`, {
-      email: 'admin@claimsight.internal',
+      email: 'admin@insureauto.ai',
       password: 'AdminPassword@123'
     });
 
@@ -115,12 +115,22 @@ const runTests = async () => {
       headers: { Authorization: `Bearer ${assessorToken}` }
     });
 
-    if (claimsRes.data.claims.length > 0) {
-      const claim = claimsRes.data.claims[0];
+    const activeClaim = claimsRes.data.claims.find(c => c.status === 'UNDER_REVIEW') ||
+                        claimsRes.data.claims.find(c => c.status === 'PENDING_REVIEW');
+
+    if (activeClaim) {
+      if (activeClaim.status === 'PENDING_REVIEW') {
+        await axios.patch(
+          `${API_URL}/claims/${activeClaim.jobId}/status`,
+          { status: 'UNDER_REVIEW', assessorNotes: 'Preparing for override audit test' },
+          { headers: { Authorization: `Bearer ${assessorToken}` } }
+        );
+      }
+
       const overrideRes = await axios.patch(
-        `${API_URL}/claims/${claim.jobId}/override`,
+        `${API_URL}/claims/${activeClaim.jobId}/override`,
         {
-          newRecommendation: 'MANUAL_REVIEW',
+          newRecommendation: 'APPROVE',
           reason: 'Automated test justification audit',
           assessorId: 'FAKE_SPOOFED_ID'
         },

@@ -9,9 +9,18 @@ const ClaimSubmission = ({ onClaimSubmitted }) => {
   const [submissionType, setSubmissionType] = useState('video');
   const [formData, setFormData] = useState({
     claim_date: new Date().toISOString().split('T')[0],
+    incident_time: '14:30',
+    incident_type: 'Vehicle Collision',
     claim_description: '',
     claim_location: '',
-    policy_id: ''
+    policy_id: '',
+    customer_name: '',
+    customer_email: '',
+    customer_phone: '',
+    vehicle_registration: '',
+    vehicle_make: '',
+    vehicle_model: '',
+    vehicle_year: new Date().getFullYear().toString()
   });
   const [mediaFile, setMediaFile] = useState(null);
   const [mediaPreview, setMediaPreview] = useState(null);
@@ -70,9 +79,18 @@ const ClaimSubmission = ({ onClaimSubmitted }) => {
         submitData.append('image', mediaFile);
       }
       submitData.append('claim_date', formData.claim_date);
+      submitData.append('incident_time', formData.incident_time);
+      submitData.append('incident_type', formData.incident_type);
       submitData.append('claim_description', formData.claim_description);
       submitData.append('claim_location', formData.claim_location || 'Unknown');
       submitData.append('policy_id', formData.policy_id || '');
+      submitData.append('customer_name', formData.customer_name);
+      submitData.append('customer_email', formData.customer_email);
+      submitData.append('customer_phone', formData.customer_phone);
+      submitData.append('vehicle_registration', formData.vehicle_registration);
+      submitData.append('vehicle_make', formData.vehicle_make);
+      submitData.append('vehicle_model', formData.vehicle_model);
+      submitData.append('vehicle_year', formData.vehicle_year);
 
       setProgressStage('Running multi-modal AI damage assessment and fraud verification...');
       const response = await claimAPI.submitClaim(submitData);
@@ -81,8 +99,8 @@ const ClaimSubmission = ({ onClaimSubmitted }) => {
 
       if (onClaimSubmitted && response.claim) {
         onClaimSubmitted(response.claim);
-      } else if (response.claim?.jobId) {
-        navigate(`/claims/${response.claim.jobId}`);
+      } else if (response.claim?.claimId || response.claim?.jobId) {
+        navigate(`/claims/${response.claim.claimId || response.claim.jobId}`);
       } else {
         navigate('/claims');
       }
@@ -97,10 +115,10 @@ const ClaimSubmission = ({ onClaimSubmitted }) => {
   };
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
+    <div className="max-w-3xl mx-auto space-y-6">
       <div className="border-b border-slate-200 pb-5">
         <h1 className="text-2xl font-bold tracking-tight text-slate-900">New Claim Intake</h1>
-        <p className="text-sm text-slate-500 mt-1">Submit physical vehicle evidence for assessment.</p>
+        <p className="text-sm text-slate-500 mt-1">Submit physical vehicle evidence and claim details for automated assessment.</p>
       </div>
 
       <form onSubmit={handleSubmit} className="bg-white border border-slate-200 rounded p-6 space-y-6">
@@ -176,50 +194,139 @@ const ClaimSubmission = ({ onClaimSubmitted }) => {
           )}
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-          <div>
-            <label className="block text-slate-700 font-medium mb-1">Policy Identifier</label>
-            <input
-              type="text"
-              placeholder="e.g. POL-4402"
-              value={formData.policy_id}
-              onChange={(e) => setFormData({ ...formData, policy_id: e.target.value })}
-              className="w-full bg-white border border-slate-200 rounded px-3 py-2 text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-400 font-mono"
-            />
+        <div className="border-t border-slate-100 pt-4">
+          <h2 className="text-xs font-semibold text-slate-800 uppercase tracking-wider mb-3">Vehicle Details</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
+            <div>
+              <label className="block text-slate-700 font-medium mb-1">Registration #</label>
+              <input
+                type="text"
+                placeholder="e.g. 7XYZ890"
+                value={formData.vehicle_registration}
+                onChange={(e) => setFormData({ ...formData, vehicle_registration: e.target.value })}
+                className="w-full bg-white border border-slate-200 rounded px-3 py-2 text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-400 font-mono"
+              />
+            </div>
+            <div>
+              <label className="block text-slate-700 font-medium mb-1">Make</label>
+              <input
+                type="text"
+                placeholder="e.g. Honda"
+                value={formData.vehicle_make}
+                onChange={(e) => setFormData({ ...formData, vehicle_make: e.target.value })}
+                className="w-full bg-white border border-slate-200 rounded px-3 py-2 text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-400"
+              />
+            </div>
+            <div>
+              <label className="block text-slate-700 font-medium mb-1">Model</label>
+              <input
+                type="text"
+                placeholder="e.g. Civic"
+                value={formData.vehicle_model}
+                onChange={(e) => setFormData({ ...formData, vehicle_model: e.target.value })}
+                className="w-full bg-white border border-slate-200 rounded px-3 py-2 text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-400"
+              />
+            </div>
+            <div>
+              <label className="block text-slate-700 font-medium mb-1">Year</label>
+              <input
+                type="number"
+                placeholder="2022"
+                value={formData.vehicle_year}
+                onChange={(e) => setFormData({ ...formData, vehicle_year: e.target.value })}
+                className="w-full bg-white border border-slate-200 rounded px-3 py-2 text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-400"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="border-t border-slate-100 pt-4">
+          <h2 className="text-xs font-semibold text-slate-800 uppercase tracking-wider mb-3">Policy & Claimant</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+            <div>
+              <label className="block text-slate-700 font-medium mb-1">Policy Identifier</label>
+              <input
+                type="text"
+                placeholder="e.g. POL-4402"
+                value={formData.policy_id}
+                onChange={(e) => setFormData({ ...formData, policy_id: e.target.value })}
+                className="w-full bg-white border border-slate-200 rounded px-3 py-2 text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-400 font-mono"
+              />
+            </div>
+
+            <div>
+              <label className="block text-slate-700 font-medium mb-1">Customer Name</label>
+              <input
+                type="text"
+                placeholder="e.g. Robert Vance"
+                value={formData.customer_name}
+                onChange={(e) => setFormData({ ...formData, customer_name: e.target.value })}
+                className="w-full bg-white border border-slate-200 rounded px-3 py-2 text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-400"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="border-t border-slate-100 pt-4">
+          <h2 className="text-xs font-semibold text-slate-800 uppercase tracking-wider mb-3">Incident Information</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs mb-3">
+            <div>
+              <label className="block text-slate-700 font-medium mb-1">Incident Date</label>
+              <input
+                type="date"
+                value={formData.claim_date}
+                onChange={(e) => setFormData({ ...formData, claim_date: e.target.value })}
+                className="w-full bg-white border border-slate-200 rounded px-3 py-2 text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-400"
+              />
+            </div>
+            <div>
+              <label className="block text-slate-700 font-medium mb-1">Time</label>
+              <input
+                type="time"
+                value={formData.incident_time}
+                onChange={(e) => setFormData({ ...formData, incident_time: e.target.value })}
+                className="w-full bg-white border border-slate-200 rounded px-3 py-2 text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-400"
+              />
+            </div>
+            <div>
+              <label className="block text-slate-700 font-medium mb-1">Incident Type</label>
+              <select
+                value={formData.incident_type}
+                onChange={(e) => setFormData({ ...formData, incident_type: e.target.value })}
+                className="w-full bg-white border border-slate-200 rounded px-3 py-2 text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-400"
+              >
+                <option value="Vehicle Collision">Vehicle Collision</option>
+                <option value="Rear-End Collision">Rear-End Collision</option>
+                <option value="Single Vehicle Impact">Single Vehicle Impact</option>
+                <option value="Side Swipe / T-Bone">Side Swipe / T-Bone</option>
+                <option value="Vandalism / Glass">Vandalism / Glass</option>
+                <option value="Weather / Hail">Weather / Hail</option>
+              </select>
+            </div>
           </div>
 
-          <div>
-            <label className="block text-slate-700 font-medium mb-1">Incident Date</label>
+          <div className="text-xs mb-3">
+            <label className="block text-slate-700 font-medium mb-1">Incident Location</label>
             <input
-              type="date"
-              value={formData.claim_date}
-              onChange={(e) => setFormData({ ...formData, claim_date: e.target.value })}
+              type="text"
+              placeholder="e.g. Intersection of 5th Ave and Main St"
+              value={formData.claim_location}
+              onChange={(e) => setFormData({ ...formData, claim_location: e.target.value })}
               className="w-full bg-white border border-slate-200 rounded px-3 py-2 text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-400"
             />
           </div>
-        </div>
 
-        <div className="text-xs">
-          <label className="block text-slate-700 font-medium mb-1">Incident Location</label>
-          <input
-            type="text"
-            placeholder="e.g. Intersection of 5th Ave and Main St"
-            value={formData.claim_location}
-            onChange={(e) => setFormData({ ...formData, claim_location: e.target.value })}
-            className="w-full bg-white border border-slate-200 rounded px-3 py-2 text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-400"
-          />
-        </div>
-
-        <div className="text-xs">
-          <label className="block text-slate-700 font-medium mb-1">Claimant Accident Description</label>
-          <textarea
-            rows={3}
-            required
-            placeholder="Detailed narrative of the incident for consistency verification..."
-            value={formData.claim_description}
-            onChange={(e) => setFormData({ ...formData, claim_description: e.target.value })}
-            className="w-full bg-white border border-slate-200 rounded p-2.5 text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-400"
-          />
+          <div className="text-xs">
+            <label className="block text-slate-700 font-medium mb-1">Claimant Accident Description</label>
+            <textarea
+              rows={3}
+              required
+              placeholder="Detailed narrative of the incident for consistency verification..."
+              value={formData.claim_description}
+              onChange={(e) => setFormData({ ...formData, claim_description: e.target.value })}
+              className="w-full bg-white border border-slate-200 rounded p-2.5 text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-400"
+            />
+          </div>
         </div>
 
         {loading && (

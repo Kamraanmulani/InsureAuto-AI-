@@ -24,72 +24,66 @@ const ClaimsDashboard = () => {
   }, []);
 
   const needsReviewCount = claims.filter(c =>
-    c.decision?.recommendation === 'MANUAL_REVIEW' || c.status === 'REVIEW_REQUIRED'
+    ['PENDING_REVIEW', 'UNDER_REVIEW', 'REVIEW_REQUIRED'].includes(c.status)
   ).length;
 
-  const highRiskCount = claims.filter(c =>
-    (c.decision?.scores?.fraud >= 7) || (c.decision?.recommendation === 'REJECT')
-  ).length;
+  const highRiskCount = claims.filter(c => {
+    const fraud = c.aiAssessment?.scores?.fraud || c.decision?.scores?.fraud || 0;
+    const rec = c.aiAssessment?.recommendation || c.decision?.recommendation || '';
+    return fraud >= 7 || rec === 'REJECT';
+  }).length;
 
   const processingCount = claims.filter(c =>
-    c.status === 'PROCESSING' || c.status === 'SUBMITTED'
+    ['SUBMITTED', 'PROCESSING', 'AI_ASSESSED'].includes(c.status)
   ).length;
 
   const completedCount = claims.filter(c =>
-    c.status === 'APPROVED' || c.status === 'REJECTED' || c.status === 'CLOSED'
+    ['APPROVED', 'REJECTED', 'CLOSED'].includes(c.status)
   ).length;
 
   const priorityClaims = claims.filter(c =>
-    c.decision?.recommendation === 'MANUAL_REVIEW' || (c.decision?.scores?.fraud >= 6) || c.status === 'REVIEW_REQUIRED'
+    ['PENDING_REVIEW', 'UNDER_REVIEW', 'NEEDS_INFORMATION'].includes(c.status) ||
+    ((c.aiAssessment?.scores?.fraud || 0) >= 6)
   ).slice(0, 6);
 
   const displayPriority = priorityClaims.length > 0 ? priorityClaims : claims.slice(0, 6);
 
   const chartData = [
-    { name: 'Approve', count: claims.filter(c => c.decision?.recommendation === 'APPROVE').length },
-    { name: 'Review', count: claims.filter(c => c.decision?.recommendation === 'MANUAL_REVIEW').length },
-    { name: 'Reject', count: claims.filter(c => c.decision?.recommendation === 'REJECT').length },
-    { name: 'Pending', count: processingCount }
+    { name: 'Approve', count: claims.filter(c => (c.aiAssessment?.recommendation || c.decision?.recommendation) === 'APPROVE').length },
+    { name: 'Review', count: claims.filter(c => (c.aiAssessment?.recommendation || c.decision?.recommendation) === 'MANUAL_REVIEW').length },
+    { name: 'Reject', count: claims.filter(c => (c.aiAssessment?.recommendation || c.decision?.recommendation) === 'REJECT').length },
+    { name: 'Needs Info', count: claims.filter(c => c.status === 'NEEDS_INFORMATION').length }
   ];
 
-  const getStatusBadge = (claim) => {
-    const rec = claim.decision?.recommendation || claim.status;
-    if (rec === 'APPROVE' || claim.status === 'APPROVED') {
-      return (
-        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-50 text-emerald-800 border border-emerald-200">
-          Approved
-        </span>
-      );
+  const getStatusBadge = (status) => {
+    switch (status) {
+      case 'SUBMITTED':
+        return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200">Submitted</span>;
+      case 'PROCESSING':
+        return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-800 border border-blue-200">Processing</span>;
+      case 'AI_ASSESSED':
+        return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-50 text-indigo-800 border border-indigo-200">AI Assessed</span>;
+      case 'PENDING_REVIEW':
+        return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200">Pending Review</span>;
+      case 'UNDER_REVIEW':
+        return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-800 border border-blue-300 font-semibold">Under Review</span>;
+      case 'APPROVED':
+        return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-50 text-emerald-800 border border-emerald-200 font-semibold">Approved</span>;
+      case 'REJECTED':
+        return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-rose-50 text-rose-800 border border-rose-200 font-semibold">Rejected</span>;
+      case 'NEEDS_INFORMATION':
+        return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-50 text-orange-800 border border-orange-200">Needs Info</span>;
+      case 'CLOSED':
+        return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-200 text-slate-800 border border-slate-300">Closed</span>;
+      default:
+        return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200">{status}</span>;
     }
-    if (rec === 'REJECT' || claim.status === 'REJECTED') {
-      return (
-        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-rose-50 text-rose-800 border border-rose-200">
-          Rejected
-        </span>
-      );
-    }
-    if (rec === 'MANUAL_REVIEW' || claim.status === 'REVIEW_REQUIRED') {
-      return (
-        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200">
-          Needs Review
-        </span>
-      );
-    }
-    return (
-      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200">
-        Processing
-      </span>
-    );
   };
 
   const getRiskIndicator = (score) => {
     const s = Number(score) || 0;
-    if (s >= 7) {
-      return <span className="text-xs font-semibold text-rose-700">High ({s.toFixed(1)})</span>;
-    }
-    if (s >= 4) {
-      return <span className="text-xs font-semibold text-amber-700">Medium ({s.toFixed(1)})</span>;
-    }
+    if (s >= 7) return <span className="text-xs font-semibold text-rose-700">High ({s.toFixed(1)})</span>;
+    if (s >= 4) return <span className="text-xs font-semibold text-amber-700">Medium ({s.toFixed(1)})</span>;
     return <span className="text-xs font-semibold text-emerald-700">Low ({s.toFixed(1)})</span>;
   };
 
@@ -184,7 +178,7 @@ const ClaimsDashboard = () => {
                       <th className="py-2.5 px-4">Claim</th>
                       <th className="py-2.5 px-4">Customer</th>
                       <th className="py-2.5 px-4">Vehicle</th>
-                      <th className="py-2.5 px-4">Status</th>
+                      <th className="py-2.5 px-4">Lifecycle State</th>
                       <th className="py-2.5 px-4">Risk</th>
                       <th className="py-2.5 px-4">Age</th>
                       <th className="py-2.5 px-4 text-right">Action</th>
@@ -192,27 +186,27 @@ const ClaimsDashboard = () => {
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {displayPriority.map((claim) => {
-                      const policyId = claim.claimInfo?.policyId || 'POL-UNASSIGNED';
-                      const desc = claim.claimInfo?.description || 'Motor accident';
-                      const vehicle = claim.metadata?.vehicleInfo || (claim.claimType === 'VIDEO_WALK_AROUND' ? 'Video Walk-Around' : 'Standard Sedan');
-                      const fraudScore = claim.decision?.scores?.fraud || 0;
-                      const age = calculateAge(claim.createdAt || claim.claimInfo?.date);
+                      const policyId = claim.policy?.policyNumber || claim.claimInfo?.policyId || 'POL-UNASSIGNED';
+                      const customerName = claim.customer?.name || policyId;
+                      const vehicle = `${claim.vehicle?.year || ''} ${claim.vehicle?.make || 'Vehicle'} ${claim.vehicle?.model || ''}`.trim();
+                      const fraudScore = claim.aiAssessment?.scores?.fraud || claim.decision?.scores?.fraud || 0;
+                      const age = calculateAge(claim.createdAt || claim.incident?.date);
 
                       return (
                         <tr
-                          key={claim.jobId}
-                          onClick={() => navigate(`/claims/${claim.jobId}`)}
+                          key={claim.claimId || claim.jobId}
+                          onClick={() => navigate(`/claims/${claim.claimId || claim.jobId}`)}
                           className="hover:bg-slate-50 cursor-pointer transition"
                         >
                           <td className="py-3 px-4 font-mono font-medium text-slate-900">
-                            CLM-{claim.jobId.slice(0, 6).toUpperCase()}
+                            {claim.claimId || (claim.jobId ? `CLM-${claim.jobId.slice(0, 6).toUpperCase()}` : 'CLM-UNASSIGNED')}
                           </td>
                           <td className="py-3 px-4">
-                            <span className="font-medium text-slate-800 block">{policyId}</span>
-                            <span className="text-[11px] text-slate-500 truncate max-w-[140px] block">{desc}</span>
+                            <span className="font-medium text-slate-800 block">{customerName}</span>
+                            <span className="text-[11px] text-slate-500 font-mono">{policyId}</span>
                           </td>
                           <td className="py-3 px-4 text-slate-600">{vehicle}</td>
-                          <td className="py-3 px-4">{getStatusBadge(claim)}</td>
+                          <td className="py-3 px-4">{getStatusBadge(claim.status)}</td>
                           <td className="py-3 px-4">{getRiskIndicator(fraudScore)}</td>
                           <td className="py-3 px-4 text-slate-500">{age}</td>
                           <td className="py-3 px-4 text-right">
@@ -220,7 +214,7 @@ const ClaimsDashboard = () => {
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                navigate(`/claims/${claim.jobId}`);
+                                navigate(`/claims/${claim.claimId || claim.jobId}`);
                               }}
                               className="text-xs font-medium text-blue-600 hover:text-blue-800"
                             >
@@ -266,10 +260,10 @@ const ClaimsDashboard = () => {
                 claims.slice(0, 4).map((claim, idx) => (
                   <div key={idx} className="py-2.5 first:pt-0 last:pb-0">
                     <p className="font-medium text-slate-800">
-                      Claim CLM-{claim.jobId.slice(0, 6).toUpperCase()} assessed
+                      Claim {claim.claimId || (claim.jobId ? `CLM-${claim.jobId.slice(0, 6).toUpperCase()}` : 'CLM-RECORD')} • {claim.status?.replace(/_/g, ' ')}
                     </p>
                     <p className="text-slate-500 text-[11px] mt-0.5">
-                      Recommendation: {claim.decision?.recommendation || 'Evaluated'} • Policy: {claim.claimInfo?.policyId || 'N/A'}
+                      Policy: {claim.policy?.policyNumber || claim.claimInfo?.policyId || 'N/A'} • AI Rec: {claim.aiAssessment?.recommendation || 'Evaluated'}
                     </p>
                     <span className="text-[10px] text-slate-400 mt-1 block">
                       {claim.createdAt ? new Date(claim.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently'}

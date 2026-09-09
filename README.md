@@ -1,8 +1,8 @@
-# ClaimSight
+# InsureAuto AI
 
 > AI-Assisted Motor Insurance Claim Assessment & Fraud Detection Platform
 
-ClaimSight is an insurance claims operations platform that combines computer vision, vision-language modeling (VLM), and temporal anti-fraud heuristics into an assessor workspace. The system ingests physical vehicle damage evidence—both single damage photographs and walk-around inspection videos—to quantify damage severity, cross-verify claimant descriptions, detect digital tampering and duplicate submissions, and provide transparent adjudication recommendations.
+InsureAuto AI is an insurance claims operations platform that combines computer vision, vision-language modeling (VLM), and temporal anti-fraud heuristics into an assessor workspace. The system ingests physical vehicle damage evidence—both single damage photographs and walk-around inspection videos—to quantify damage severity, cross-verify claimant descriptions, detect digital tampering and duplicate submissions, and provide transparent adjudication recommendations.
 
 ---
 
@@ -62,7 +62,7 @@ ClaimSight is an insurance claims operations platform that combines computer vis
 ## Repository Structure
 
 ```
-ClaimSight/
+InsureAuto-AI/
 ├── backend/                  # Node.js Express API & authentication service
 │   ├── src/
 │   │   ├── config/           # Database connections (MongoDB/Mongoose)

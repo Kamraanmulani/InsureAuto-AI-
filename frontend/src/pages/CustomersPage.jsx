@@ -45,14 +45,14 @@ const CustomersPage = () => {
   });
 
   claims.forEach((claim) => {
-    const policyId = claim.claimInfo?.policyId || 'POL-UNASSIGNED';
+    const policyId = claim.policy?.policyNumber || claim.claimInfo?.policyId || 'POL-UNASSIGNED';
     if (!customerMap[policyId]) {
       customerMap[policyId] = {
-        id: `CUST-${policyId.replace(/\D/g, '').slice(0, 4) || '999'}`,
-        name: `Policyholder ${policyId}`,
+        id: claim.customer?.customerId || `CUST-${policyId.replace(/\D/g, '').slice(0, 4) || '999'}`,
+        name: claim.customer?.name || `Policyholder ${policyId}`,
         policy: policyId,
-        email: `policyholder-${policyId.toLowerCase()}@client.org`,
-        phone: '+1 (555) 000-0000',
+        email: claim.customer?.email || `policyholder-${policyId.toLowerCase()}@client.org`,
+        phone: claim.customer?.phone || '+1 (555) 000-0000',
         claims: [],
         openReviews: 0,
         maxRisk: 'Low',
@@ -63,18 +63,23 @@ const CustomersPage = () => {
     const c = customerMap[policyId];
     c.claims.push(claim);
 
-    if (claim.decision?.recommendation === 'MANUAL_REVIEW' || claim.status === 'REVIEW_REQUIRED') {
+    if (
+      claim.status === 'PENDING_REVIEW' ||
+      claim.status === 'UNDER_REVIEW' ||
+      claim.status === 'REVIEW_REQUIRED' ||
+      claim.decision?.recommendation === 'MANUAL_REVIEW'
+    ) {
       c.openReviews += 1;
     }
 
-    const fraud = claim.decision?.scores?.fraud || 0;
+    const fraud = claim.aiAssessment?.fraudAssessment?.overallScore ?? claim.decision?.scores?.fraud ?? 0;
     if (fraud >= 7 || claim.decision?.recommendation === 'REJECT') {
       c.maxRisk = 'High';
     } else if (fraud >= 4 && c.maxRisk !== 'High') {
       c.maxRisk = 'Medium';
     }
 
-    const claimDate = claim.createdAt || claim.claimInfo?.date;
+    const claimDate = claim.createdAt || claim.incident?.date || claim.claimInfo?.date;
     if (claimDate) {
       if (c.latestClaimDate === 'N/A' || new Date(claimDate) > new Date(c.latestClaimDate)) {
         c.latestClaimDate = new Date(claimDate).toLocaleDateString();
@@ -227,20 +232,20 @@ const CustomersPage = () => {
                 <div className="space-y-2">
                   {selectedCustomer.claims.map((claim) => (
                     <div
-                      key={claim.jobId}
-                      onClick={() => navigate(`/claims/${claim.jobId}`)}
+                      key={claim.claimId || claim.jobId}
+                      onClick={() => navigate(`/claims/${claim.claimId || claim.jobId}`)}
                       className="p-3 bg-white border border-slate-200 rounded hover:border-slate-400 cursor-pointer text-xs transition"
                     >
                       <div className="flex justify-between font-mono font-medium text-slate-900">
-                        <span>CLM-{claim.jobId.slice(0, 8).toUpperCase()}</span>
+                        <span>{claim.claimId || (claim.jobId ? `CLM-${claim.jobId.slice(0, 8).toUpperCase()}` : 'CLM-UNASSIGNED')}</span>
                         <span className="text-slate-500 text-[11px]">
                           {claim.createdAt ? new Date(claim.createdAt).toLocaleDateString() : 'N/A'}
                         </span>
                       </div>
-                      <p className="text-slate-600 mt-1 line-clamp-1">{claim.claimInfo?.description}</p>
+                      <p className="text-slate-600 mt-1 line-clamp-1">{claim.incident?.description || claim.claimInfo?.description}</p>
                       <div className="mt-2 flex justify-between items-center text-[11px]">
                         <span className="text-slate-500">
-                          Score: {(claim.decision?.scores?.damage || 0).toFixed(1)}/10
+                          Score: {(claim.aiAssessment?.damageAssessment?.score ?? claim.decision?.scores?.damage ?? 0).toFixed(1)}/10
                         </span>
                         <span className="text-blue-600 font-medium">View Investigation &rarr;</span>
                       </div>

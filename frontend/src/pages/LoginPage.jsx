@@ -36,10 +36,10 @@ const LoginPage = () => {
 
   const handleQuickFill = (role) => {
     if (role === 'ASSESSOR') {
-      setEmail('assessor@claimsight.internal');
+      setEmail('assessor@insureauto.ai');
       setPassword('Password@123');
     } else if (role === 'ADMIN') {
-      setEmail('admin@claimsight.internal');
+      setEmail('admin@insureauto.ai');
       setPassword('AdminPassword@123');
     }
   };
@@ -48,10 +48,10 @@ const LoginPage = () => {
     <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
         <div className="inline-flex items-center justify-center w-10 h-10 rounded bg-slate-900 text-white font-bold text-base tracking-wider mb-3">
-          CS
+          IA
         </div>
         <h2 className="text-xl font-bold tracking-tight text-slate-900">
-          ClaimSight Workspace
+          InsureAuto AI Workspace
         </h2>
         <p className="mt-1 text-xs text-slate-500">
           Sign in to access the motor insurance claims assessment queue.
@@ -70,7 +70,7 @@ const LoginPage = () => {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="assessor@claimsight.internal"
+                placeholder="assessor@insureauto.ai"
                 className="w-full text-xs px-3 py-2 border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-slate-400 text-slate-900"
               />
             </div>

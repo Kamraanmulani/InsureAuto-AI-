@@ -5,9 +5,10 @@ import { claimAPI } from '../services/api';
 
 const TABS = [
   { id: 'all', label: 'All' },
-  { id: 'review', label: 'Needs Review' },
+  { id: 'needs_review', label: 'Needs Review' },
   { id: 'high_risk', label: 'High Risk' },
   { id: 'processing', label: 'Processing' },
+  { id: 'needs_info', label: 'Needs Info' },
   { id: 'approved', label: 'Approved' },
   { id: 'rejected', label: 'Rejected' },
   { id: 'closed', label: 'Closed' }
@@ -45,23 +46,26 @@ const ClaimsListPage = () => {
   }, [searchParams]);
 
   const filteredClaims = claims.filter((claim) => {
-    const rec = claim.decision?.recommendation || '';
     const status = claim.status || '';
-    const fraudScore = claim.decision?.scores?.fraud || 0;
+    const fraudScore = claim.aiAssessment?.scores?.fraud || claim.decision?.scores?.fraud || 0;
+    const aiRec = claim.aiAssessment?.recommendation || claim.decision?.recommendation || '';
 
-    if (activeTab === 'review' && !(rec === 'MANUAL_REVIEW' || status === 'REVIEW_REQUIRED')) {
+    if (activeTab === 'needs_review' && !['PENDING_REVIEW', 'UNDER_REVIEW', 'REVIEW_REQUIRED'].includes(status)) {
       return false;
     }
-    if (activeTab === 'high_risk' && !(fraudScore >= 7 || rec === 'REJECT')) {
+    if (activeTab === 'high_risk' && !(fraudScore >= 7 || aiRec === 'REJECT')) {
       return false;
     }
-    if (activeTab === 'processing' && !(status === 'PROCESSING' || status === 'SUBMITTED')) {
+    if (activeTab === 'processing' && !['SUBMITTED', 'PROCESSING', 'AI_ASSESSED'].includes(status)) {
       return false;
     }
-    if (activeTab === 'approved' && !(rec === 'APPROVE' || status === 'APPROVED')) {
+    if (activeTab === 'needs_info' && status !== 'NEEDS_INFORMATION') {
       return false;
     }
-    if (activeTab === 'rejected' && !(rec === 'REJECT' || status === 'REJECTED')) {
+    if (activeTab === 'approved' && status !== 'APPROVED') {
+      return false;
+    }
+    if (activeTab === 'rejected' && status !== 'REJECTED') {
       return false;
     }
     if (activeTab === 'closed' && status !== 'CLOSED') {
@@ -71,10 +75,13 @@ const ClaimsListPage = () => {
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       const jobId = (claim.jobId || '').toLowerCase();
-      const policyId = (claim.claimInfo?.policyId || '').toLowerCase();
-      const desc = (claim.claimInfo?.description || '').toLowerCase();
-      const loc = (claim.claimInfo?.location || '').toLowerCase();
-      if (!jobId.includes(q) && !policyId.includes(q) && !desc.includes(q) && !loc.includes(q)) {
+      const claimId = (claim.claimId || '').toLowerCase();
+      const customer = (claim.customer?.name || '').toLowerCase();
+      const policyId = (claim.policy?.policyNumber || claim.claimInfo?.policyId || '').toLowerCase();
+      const desc = (claim.incident?.description || claim.claimInfo?.description || '').toLowerCase();
+      const loc = (claim.incident?.location || claim.claimInfo?.location || '').toLowerCase();
+      const vehicle = `${claim.vehicle?.make || ''} ${claim.vehicle?.model || ''} ${claim.vehicle?.registration || ''}`.toLowerCase();
+      if (!jobId.includes(q) && !claimId.includes(q) && !customer.includes(q) && !policyId.includes(q) && !desc.includes(q) && !loc.includes(q) && !vehicle.includes(q)) {
         return false;
       }
     }
@@ -83,68 +90,54 @@ const ClaimsListPage = () => {
   });
 
   const sortedClaims = [...filteredClaims].sort((a, b) => {
-    if (sortBy === 'date_desc') {
-      return new Date(b.createdAt || b.claimInfo?.date || 0) - new Date(a.createdAt || a.claimInfo?.date || 0);
-    }
-    if (sortBy === 'date_asc') {
-      return new Date(a.createdAt || a.claimInfo?.date || 0) - new Date(b.createdAt || b.claimInfo?.date || 0);
-    }
+    const dateA = new Date(a.incident?.date || a.createdAt || 0);
+    const dateB = new Date(b.incident?.date || b.createdAt || 0);
+
+    if (sortBy === 'date_desc') return dateB - dateA;
+    if (sortBy === 'date_asc') return dateA - dateB;
     if (sortBy === 'risk_desc') {
-      return (b.decision?.scores?.fraud || 0) - (a.decision?.scores?.fraud || 0);
+      const fraudA = a.aiAssessment?.scores?.fraud || a.decision?.scores?.fraud || 0;
+      const fraudB = b.aiAssessment?.scores?.fraud || b.decision?.scores?.fraud || 0;
+      return fraudB - fraudA;
     }
     if (sortBy === 'damage_desc') {
-      return (b.decision?.scores?.damage || 0) - (a.decision?.scores?.damage || 0);
+      const damageA = a.aiAssessment?.scores?.damage || a.decision?.scores?.damage || 0;
+      const damageB = b.aiAssessment?.scores?.damage || b.decision?.scores?.damage || 0;
+      return damageB - damageA;
     }
     return 0;
   });
 
-  const getStatusBadge = (claim) => {
-    const rec = claim.decision?.recommendation || claim.status;
-    if (rec === 'APPROVE' || claim.status === 'APPROVED') {
-      return (
-        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-50 text-emerald-800 border border-emerald-200">
-          Approved
-        </span>
-      );
+  const getStatusBadge = (status) => {
+    switch (status) {
+      case 'SUBMITTED':
+        return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200">Submitted</span>;
+      case 'PROCESSING':
+        return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-800 border border-blue-200">Processing</span>;
+      case 'AI_ASSESSED':
+        return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-50 text-indigo-800 border border-indigo-200">AI Assessed</span>;
+      case 'PENDING_REVIEW':
+        return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200">Pending Review</span>;
+      case 'UNDER_REVIEW':
+        return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-800 border border-blue-300 font-semibold">Under Review</span>;
+      case 'APPROVED':
+        return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-50 text-emerald-800 border border-emerald-200 font-semibold">Approved</span>;
+      case 'REJECTED':
+        return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-rose-50 text-rose-800 border border-rose-200 font-semibold">Rejected</span>;
+      case 'NEEDS_INFORMATION':
+        return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-50 text-orange-800 border border-orange-200">Needs Info</span>;
+      case 'CLOSED':
+        return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-200 text-slate-800 border border-slate-300">Closed</span>;
+      default:
+        return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200">{status}</span>;
     }
-    if (rec === 'REJECT' || claim.status === 'REJECTED') {
-      return (
-        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-rose-50 text-rose-800 border border-rose-200">
-          Rejected
-        </span>
-      );
-    }
-    if (rec === 'MANUAL_REVIEW' || claim.status === 'REVIEW_REQUIRED') {
-      return (
-        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200">
-          Needs Review
-        </span>
-      );
-    }
-    return (
-      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200">
-        Processing
-      </span>
-    );
   };
 
   const getRiskScoreBadge = (score) => {
     const s = Number(score) || 0;
-    if (s >= 7) {
-      return <span className="font-semibold text-rose-700">{s.toFixed(1)} / 10</span>;
-    }
-    if (s >= 4) {
-      return <span className="font-semibold text-amber-700">{s.toFixed(1)} / 10</span>;
-    }
+    if (s >= 7) return <span className="font-semibold text-rose-700">{s.toFixed(1)} / 10</span>;
+    if (s >= 4) return <span className="font-semibold text-amber-700">{s.toFixed(1)} / 10</span>;
     return <span className="font-semibold text-emerald-700">{s.toFixed(1)} / 10</span>;
-  };
-
-  const getEmptyMessage = () => {
-    if (searchQuery) return 'No claims match your search query.';
-    if (activeTab === 'high_risk') return 'No high-risk claims.';
-    if (activeTab === 'review') return 'No claims awaiting review.';
-    if (activeTab === 'closed') return 'No closed claims.';
-    return 'No claims yet.';
   };
 
   return (
@@ -152,7 +145,7 @@ const ClaimsListPage = () => {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-200 pb-5">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">Claims</h1>
-          <p className="text-sm text-slate-500 mt-1">Review and manage submitted claims.</p>
+          <p className="text-sm text-slate-500 mt-1">Review and manage submitted motor insurance claims.</p>
         </div>
         <div>
           <button
@@ -165,13 +158,13 @@ const ClaimsListPage = () => {
         </div>
       </div>
 
-      <div className="border-b border-slate-200 flex space-x-6 text-sm font-medium">
+      <div className="border-b border-slate-200 flex space-x-6 text-sm font-medium overflow-x-auto">
         {TABS.map((tab) => (
           <button
             key={tab.id}
             type="button"
             onClick={() => setActiveTab(tab.id)}
-            className={`pb-3 transition-colors border-b-2 ${
+            className={`pb-3 transition-colors border-b-2 whitespace-nowrap ${
               activeTab === tab.id
                 ? 'border-blue-600 text-slate-900 font-semibold'
                 : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -187,7 +180,7 @@ const ClaimsListPage = () => {
           <Search className="absolute left-3 top-2.5 text-slate-400" size={16} />
           <input
             type="text"
-            placeholder="Search claim, policy, description..."
+            placeholder="Search claim, policy, vehicle, description..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-9 pr-3 py-1.5 text-xs bg-white border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-slate-400 text-slate-900"
@@ -216,7 +209,7 @@ const ClaimsListPage = () => {
         {loading ? (
           <div className="py-12 text-center text-xs text-slate-500">Loading claims operational table...</div>
         ) : sortedClaims.length === 0 ? (
-          <div className="py-12 text-center text-xs text-slate-500">{getEmptyMessage()}</div>
+          <div className="py-12 text-center text-xs text-slate-500">No claims match the selected view.</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-xs">
@@ -224,40 +217,40 @@ const ClaimsListPage = () => {
                 <tr className="border-b border-slate-200 bg-slate-50 text-slate-600 font-medium">
                   <th className="py-2.5 px-4">Claim ID</th>
                   <th className="py-2.5 px-4">Policy</th>
-                  <th className="py-2.5 px-4">Type</th>
+                  <th className="py-2.5 px-4">Vehicle</th>
                   <th className="py-2.5 px-4">Incident Date</th>
                   <th className="py-2.5 px-4">Damage Score</th>
                   <th className="py-2.5 px-4">Fraud Risk</th>
-                  <th className="py-2.5 px-4">Status</th>
+                  <th className="py-2.5 px-4">Lifecycle State</th>
                   <th className="py-2.5 px-4 text-right">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {sortedClaims.map((claim) => {
-                  const policyId = claim.claimInfo?.policyId || 'Unassigned';
-                  const dateStr = claim.claimInfo?.date || claim.createdAt;
-                  const formattedDate = dateStr ? new Date(dateStr).toLocaleDateString() : 'N/A';
-                  const damageScore = claim.decision?.scores?.damage || 0;
-                  const fraudScore = claim.decision?.scores?.fraud || 0;
-                  const claimType = claim.claimType === 'VIDEO_WALK_AROUND' ? 'Video Walk-Around' : 'Damage Photo';
+                  const policyNumber = claim.policy?.policyNumber || claim.claimInfo?.policyId || 'Unassigned';
+                  const vehicleStr = `${claim.vehicle?.year || ''} ${claim.vehicle?.make || 'Vehicle'} ${claim.vehicle?.model || ''}`.trim();
+                  const dateStr = claim.incident?.date || claim.claimInfo?.date || claim.createdAt;
+                  const damageScore = claim.aiAssessment?.scores?.damage || claim.decision?.scores?.damage || 0;
+                  const fraudScore = claim.aiAssessment?.scores?.fraud || claim.decision?.scores?.fraud || 0;
 
                   return (
                     <tr
-                      key={claim.jobId}
-                      onClick={() => navigate(`/claims/${claim.jobId}`)}
+                      key={claim.claimId || claim.jobId}
+                      onClick={() => navigate(`/claims/${claim.claimId || claim.jobId}`)}
                       className="hover:bg-slate-50 cursor-pointer transition"
                     >
                       <td className="py-3 px-4 font-mono font-medium text-slate-900">
-                        CLM-{claim.jobId.slice(0, 8).toUpperCase()}
+                        {claim.claimId || (claim.jobId ? `CLM-${claim.jobId.slice(0, 8).toUpperCase()}` : 'CLM-UNASSIGNED')}
                       </td>
-                      <td className="py-3 px-4 font-medium text-slate-800">
-                        {policyId}
+                      <td className="py-3 px-4 font-medium text-slate-800 font-mono">
+                        {policyNumber}
+                      </td>
+                      <td className="py-3 px-4 text-slate-700">
+                        <div>{vehicleStr}</div>
+                        <span className="text-[11px] text-slate-400 font-mono">{claim.vehicle?.registration || 'UNREGISTERED'}</span>
                       </td>
                       <td className="py-3 px-4 text-slate-600">
-                        {claimType}
-                      </td>
-                      <td className="py-3 px-4 text-slate-600">
-                        {formattedDate}
+                        {dateStr}
                       </td>
                       <td className="py-3 px-4 text-slate-800 font-medium">
                         {damageScore.toFixed(1)} / 10
@@ -266,18 +259,18 @@ const ClaimsListPage = () => {
                         {getRiskScoreBadge(fraudScore)}
                       </td>
                       <td className="py-3 px-4">
-                        {getStatusBadge(claim)}
+                        {getStatusBadge(claim.status)}
                       </td>
                       <td className="py-3 px-4 text-right">
                         <button
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            navigate(`/claims/${claim.jobId}`);
+                            navigate(`/claims/${claim.claimId || claim.jobId}`);
                           }}
                           className="text-xs font-medium text-blue-600 hover:text-blue-800"
                         >
-                          View Details
+                          Review &rarr;
                         </button>
                       </td>
                     </tr>

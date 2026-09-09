@@ -39,9 +39,9 @@ const Navbar = () => {
           <div className="flex items-center gap-8">
             <NavLink to="/dashboard" className="flex items-center gap-2 text-slate-950 font-bold text-lg tracking-tight hover:opacity-90">
               <span className="w-8 h-8 rounded bg-slate-900 text-white flex items-center justify-center font-bold text-sm tracking-wider">
-                CS
+                IA
               </span>
-              <span>ClaimSight</span>
+              <span>InsureAuto AI</span>
             </NavLink>
 
             <nav className="hidden md:flex items-center gap-1">

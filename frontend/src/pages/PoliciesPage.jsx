@@ -42,16 +42,18 @@ const PoliciesPage = () => {
   });
 
   claims.forEach((claim) => {
-    const pid = claim.claimInfo?.policyId || 'POL-UNASSIGNED';
+    const pid = claim.policy?.policyNumber || claim.claimInfo?.policyId || 'POL-UNASSIGNED';
     if (!policyMap[pid]) {
       policyMap[pid] = {
         id: pid,
-        holder: `Policyholder (${pid})`,
-        vehicle: claim.metadata?.vehicleInfo || 'Vehicle on Record',
-        coverage: 'Standard Comprehensive',
-        deductible: '$500',
+        holder: claim.customer?.name || `Policyholder (${pid})`,
+        vehicle: claim.vehicle
+          ? `${claim.vehicle.year || ''} ${claim.vehicle.make || ''} ${claim.vehicle.model || ''}`.trim() || 'Vehicle on Record'
+          : (claim.metadata?.vehicleInfo || 'Vehicle on Record'),
+        coverage: claim.policy?.coverageType || 'Standard Comprehensive',
+        deductible: claim.policy?.deductible || '$500',
         status: 'Active',
-        term: 'Annual Term',
+        term: claim.policy?.effectiveDate ? `${claim.policy.effectiveDate} – Present` : 'Annual Term',
         claims: []
       };
     }
@@ -198,20 +200,20 @@ const PoliciesPage = () => {
                 <div className="space-y-2">
                   {selectedPolicy.claims.map((claim) => (
                     <div
-                      key={claim.jobId}
-                      onClick={() => navigate(`/claims/${claim.jobId}`)}
+                      key={claim.claimId || claim.jobId}
+                      onClick={() => navigate(`/claims/${claim.claimId || claim.jobId}`)}
                       className="p-3 bg-white border border-slate-200 rounded hover:border-slate-400 cursor-pointer text-xs transition"
                     >
                       <div className="flex justify-between font-mono font-medium text-slate-900">
-                        <span>CLM-{claim.jobId.slice(0, 8).toUpperCase()}</span>
+                        <span>{claim.claimId || (claim.jobId ? `CLM-${claim.jobId.slice(0, 8).toUpperCase()}` : 'CLM-UNASSIGNED')}</span>
                         <span className="text-slate-500 text-[11px]">
                           {claim.createdAt ? new Date(claim.createdAt).toLocaleDateString() : 'N/A'}
                         </span>
                       </div>
-                      <p className="text-slate-600 mt-1 line-clamp-1">{claim.claimInfo?.description}</p>
+                      <p className="text-slate-600 mt-1 line-clamp-1">{claim.incident?.description || claim.claimInfo?.description}</p>
                       <div className="mt-2 flex justify-between items-center text-[11px]">
                         <span className="text-slate-500">
-                          Status: {claim.decision?.recommendation || 'Processing'}
+                          Status: {claim.status ? claim.status.replace('_', ' ') : (claim.decision?.recommendation || 'Processing')}
                         </span>
                         <span className="text-blue-600 font-medium">View Investigation &rarr;</span>
                       </div>

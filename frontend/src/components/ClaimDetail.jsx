@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, Car, AlertTriangle, ShieldCheck, User, Layers } from 'lucide-react';
 import { claimAPI } from '../services/api';
+import { CLAIM_STATUS, formatClaimId } from '../types/claim';
 
 const ClaimDetail = () => {
   const { jobId } = useParams();
@@ -20,7 +21,7 @@ const ClaimDetail = () => {
   const [showReqInfoModal, setShowReqInfoModal] = useState(false);
   const [reqInfoNotes, setReqInfoNotes] = useState('');
 
-  const loadClaim = async () => {
+  const loadClaim = useCallback(async () => {
     try {
       setLoading(true);
       const response = await claimAPI.getClaim(jobId);
@@ -31,21 +32,22 @@ const ClaimDetail = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [jobId]);
 
   useEffect(() => {
     loadClaim();
-  }, [jobId]);
+  }, [loadClaim]);
 
   const handleDecisionAction = async (targetStatus, notes = '') => {
     try {
       setActionLoading(true);
-      await claimAPI.updateStatus(jobId, targetStatus, notes);
-      toast.success(`Claim status updated to ${targetStatus}.`);
+      await claimAPI.updateStatus(claim?.claimId || claim?.jobId || jobId, targetStatus, notes);
+      toast.success(`Claim status transitioned to ${targetStatus}.`);
       await loadClaim();
     } catch (error) {
       console.error(error);
-      toast.error('Failed to update claim status.');
+      const msg = error.response?.data?.error || 'Failed to update claim status.';
+      toast.error(msg);
     } finally {
       setActionLoading(false);
     }
@@ -65,7 +67,7 @@ const ClaimDetail = () => {
     try {
       setActionLoading(true);
       await claimAPI.overrideDecision(
-        jobId,
+        claim?.claimId || claim?.jobId || jobId,
         overrideData.newRecommendation,
         overrideData.reason
       );
@@ -75,7 +77,8 @@ const ClaimDetail = () => {
       await loadClaim();
     } catch (error) {
       console.error(error);
-      toast.error('Failed to record decision override.');
+      const msg = error.response?.data?.error || 'Failed to record decision override.';
+      toast.error(msg);
     } finally {
       setActionLoading(false);
     }
@@ -87,7 +90,7 @@ const ClaimDetail = () => {
       toast.error('Please describe what information is requested.');
       return;
     }
-    await handleDecisionAction('REVIEW_REQUIRED', `Assessor requested information: ${reqInfoNotes}`);
+    await handleDecisionAction(CLAIM_STATUS.NEEDS_INFORMATION, reqInfoNotes);
     setShowReqInfoModal(false);
     setReqInfoNotes('');
   };
@@ -118,15 +121,61 @@ const ClaimDetail = () => {
 
   const ML_API_URL = process.env.REACT_APP_ML_API_URL || 'http://localhost:8000';
   const isVideoClaim = claim.claimType === 'VIDEO_WALK_AROUND' || !!claim.keyframeSelection;
-  const keyframeInfo = claim.keyframeSelection || {};
-  const damage = claim.analysis?.damageAssessment || {};
-  const fraud = claim.analysis?.fraudAnalysis || {};
-  const consistency = claim.analysis?.consistencyAnalysis || {};
-  const decision = claim.decision || {};
-  const metadata = claim.metadata || {};
+  const keyframeInfo = claim.aiAssessment?.keyframeSelection || claim.keyframeSelection || {};
+  const damage = claim.aiAssessment?.damageAssessment || claim.analysis?.damageAssessment || {};
+  const fraud = claim.aiAssessment?.fraudAssessment || claim.analysis?.fraudAnalysis || {};
+  const aiRecommendation = claim.aiAssessment?.recommendation || claim.decision?.recommendation || 'MANUAL_REVIEW';
+  const aiConfidence = claim.aiAssessment?.confidence || claim.decision?.confidence || 'MEDIUM';
+  const aiExplanation = claim.aiAssessment?.explanation || claim.decision?.explanation || '';
+  const scores = claim.aiAssessment?.scores || claim.decision?.scores || { damage: 0, fraud: 0, consistency: 0 };
   const yoloAggregate = damage.yoloAggregate || {};
   const videoDup = fraud.videoDuplicateCheck || {};
   const metaFraud = fraud.metadataFraud || {};
+
+  const vehicle = claim.vehicle || {
+    make: 'Standard',
+    model: 'Sedan',
+    year: 2022,
+    registration: 'UNREGISTERED',
+    vin: 'N/A'
+  };
+
+  const incident = claim.incident || {
+    date: claim.claimInfo?.date || 'N/A',
+    time: '12:00 PM',
+    location: claim.claimInfo?.location || 'Unknown',
+    incidentType: 'Collision',
+    description: claim.claimInfo?.description || 'N/A'
+  };
+
+  const policy = claim.policy || {
+    policyNumber: claim.claimInfo?.policyId || 'POL-UNASSIGNED',
+    policyType: 'Comprehensive Motor',
+    coverageType: 'Standard Collision',
+    deductible: '$500',
+    effectiveDate: ''
+  };
+
+  const customer = claim.customer || {
+    customerId: 'CUST-UNASSIGNED',
+    name: 'Policyholder',
+    email: 'client@insureauto.ai',
+    phone: 'N/A'
+  };
+
+  const evidenceList = Array.isArray(claim.evidence) && claim.evidence.length > 0
+    ? claim.evidence
+    : [{
+        type: isVideoClaim ? 'VIDEO' : 'PHOTO',
+        fileReference: claim.annotatedImagePath || claim.primaryAnnotatedKeyframeUrl || 'primary_evidence',
+        uploadTimestamp: claim.createdAt,
+        processingStatus: 'COMPLETED'
+      }];
+
+  const humanAssessment = claim.humanAssessment || {};
+  const decision = claim.decision || { outcome: 'PENDING' };
+  const auditHistory = claim.auditHistory || [];
+  const claimCode = formatClaimId(claim);
 
   const getDisplayImageUrl = () => {
     if (!isVideoClaim) {
@@ -138,33 +187,29 @@ const ClaimDetail = () => {
     return `${ML_API_URL}/api/annotated-keyframe/${claim.jobId}?frame_type=primary`;
   };
 
-  const getStatusBadge = (rec) => {
-    if (rec === 'APPROVE' || claim.status === 'APPROVED') {
-      return (
-        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-50 text-emerald-800 border border-emerald-200">
-          Approved
-        </span>
-      );
+  const getStatusBadge = (status) => {
+    switch (status) {
+      case CLAIM_STATUS.SUBMITTED:
+        return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200">Submitted</span>;
+      case CLAIM_STATUS.PROCESSING:
+        return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-800 border border-blue-200">Processing</span>;
+      case CLAIM_STATUS.AI_ASSESSED:
+        return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-50 text-indigo-800 border border-indigo-200">AI Assessed</span>;
+      case CLAIM_STATUS.PENDING_REVIEW:
+        return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200">Pending Review</span>;
+      case CLAIM_STATUS.UNDER_REVIEW:
+        return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-800 border border-blue-300 font-semibold">Under Review</span>;
+      case CLAIM_STATUS.APPROVED:
+        return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-50 text-emerald-800 border border-emerald-200 font-semibold">Approved</span>;
+      case CLAIM_STATUS.REJECTED:
+        return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-rose-50 text-rose-800 border border-rose-200 font-semibold">Rejected</span>;
+      case CLAIM_STATUS.NEEDS_INFORMATION:
+        return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-50 text-orange-800 border border-orange-200">Needs Info</span>;
+      case CLAIM_STATUS.CLOSED:
+        return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-200 text-slate-800 border border-slate-300">Closed</span>;
+      default:
+        return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200">{status}</span>;
     }
-    if (rec === 'REJECT' || claim.status === 'REJECTED') {
-      return (
-        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-rose-50 text-rose-800 border border-rose-200">
-          Rejected
-        </span>
-      );
-    }
-    if (rec === 'MANUAL_REVIEW' || claim.status === 'REVIEW_REQUIRED') {
-      return (
-        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200">
-          Needs Review
-        </span>
-      );
-    }
-    return (
-      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200">
-        Processing
-      </span>
-    );
   };
 
   return (
@@ -172,7 +217,7 @@ const ClaimDetail = () => {
       <div className="text-xs text-slate-500 flex items-center gap-1.5">
         <Link to="/claims" className="hover:text-slate-900 transition">Claims</Link>
         <span>/</span>
-        <span className="text-slate-900 font-mono font-medium">CLM-{claim.jobId.slice(0, 8).toUpperCase()}</span>
+        <span className="text-slate-900 font-mono font-medium">{claimCode}</span>
       </div>
 
       <div className="bg-white border border-slate-200 rounded p-5">
@@ -180,34 +225,34 @@ const ClaimDetail = () => {
           <div className="space-y-1">
             <div className="flex items-center gap-3">
               <h1 className="text-xl font-bold text-slate-900 font-mono">
-                CLM-{claim.jobId.slice(0, 8).toUpperCase()}
+                {claimCode}
               </h1>
-              {getStatusBadge(decision.recommendation)}
+              {getStatusBadge(claim.status)}
               <span className="text-xs text-slate-500 font-normal">
-                {isVideoClaim ? 'Walk-Around Video' : 'Photo Evidence'}
+                {isVideoClaim ? 'Walk-Around Video Evidence' : 'Photo Evidence'}
               </span>
             </div>
             <p className="text-xs text-slate-600">
-              Submitted on {new Date(claim.createdAt).toLocaleDateString()} at {new Date(claim.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              Submitted: {new Date(claim.createdAt).toLocaleDateString()} at {new Date(claim.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • Policyholder: <span className="font-semibold text-slate-800">{customer.name}</span> ({customer.customerId || 'ID Unassigned'})
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-6 text-xs text-slate-600 border-t lg:border-t-0 pt-3 lg:pt-0">
             <div>
-              <span className="text-slate-400 block text-[11px]">Policy</span>
-              <span className="font-semibold text-slate-800">{claim.claimInfo?.policyId || 'POL-UNSPECIFIED'}</span>
+              <span className="text-slate-400 block text-[11px]">Policy Number</span>
+              <span className="font-semibold text-slate-800 font-mono">{policy.policyNumber}</span>
             </div>
             <div>
-              <span className="text-slate-400 block text-[11px]">Vehicle</span>
-              <span className="font-semibold text-slate-800">{metadata.vehicleInfo || (isVideoClaim ? 'Vehicle Walk-Around' : 'Passenger Vehicle')}</span>
+              <span className="text-slate-400 block text-[11px]">Insured Vehicle</span>
+              <span className="font-semibold text-slate-800">{vehicle.year} {vehicle.make} {vehicle.model}</span>
             </div>
             <div>
-              <span className="text-slate-400 block text-[11px]">Incident Location</span>
-              <span className="font-semibold text-slate-800">{claim.claimInfo?.location || 'Stated Location'}</span>
+              <span className="text-slate-400 block text-[11px]">Plate / Registration</span>
+              <span className="font-semibold text-slate-800 font-mono">{vehicle.registration}</span>
             </div>
             <div>
               <span className="text-slate-400 block text-[11px]">Incident Date</span>
-              <span className="font-semibold text-slate-800">{claim.claimInfo?.date || 'N/A'}</span>
+              <span className="font-semibold text-slate-800">{incident.date}</span>
             </div>
           </div>
         </div>
@@ -218,7 +263,7 @@ const ClaimDetail = () => {
           <div className="bg-white border border-slate-200 rounded p-5 space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
-                <h2 className="text-sm font-semibold text-slate-900">Physical Evidence</h2>
+                <h2 className="text-sm font-semibold text-slate-900">Physical Evidence Viewer</h2>
                 <p className="text-xs text-slate-500">Visual damage assessment with object localization.</p>
               </div>
 
@@ -294,46 +339,167 @@ const ClaimDetail = () => {
                 </div>
               </div>
             )}
+          </div>
 
-            <div className="pt-2 border-t border-slate-100">
-              <div className="text-xs font-semibold text-slate-800 mb-1">Claimant Stated Narrative</div>
-              <p className="text-xs text-slate-600 bg-slate-50 p-3 rounded border border-slate-200 leading-relaxed">
-                "{claim.claimInfo?.description || 'No statement provided.'}"
-              </p>
+          <div className="bg-white border border-slate-200 rounded p-5 space-y-3">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+              <h3 className="text-xs font-semibold text-slate-900 uppercase tracking-wide flex items-center gap-1.5">
+                <Layers size={14} className="text-slate-500" /> Evidence Inventory
+              </h3>
+              <span className="text-[11px] text-slate-500">{evidenceList.length} Item(s) Uploaded</span>
+            </div>
+            <div className="space-y-2">
+              {evidenceList.map((item, idx) => (
+                <div key={idx} className="p-3 bg-slate-50 border border-slate-200 rounded text-xs space-y-1">
+                  <div className="flex justify-between items-center">
+                    <span className="font-semibold text-slate-800 font-mono">
+                      {item.type || 'PHOTO'} Evidence #{idx + 1}
+                    </span>
+                    <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-200 text-slate-700">
+                      {item.processingStatus || 'COMPLETED'}
+                    </span>
+                  </div>
+                  <div className="text-slate-600 text-[11px] flex justify-between">
+                    <span className="text-slate-400">Reference:</span>
+                    <span className="font-mono text-slate-700 truncate max-w-[280px]">{item.fileReference || item.originalName || 'evidence_file'}</span>
+                  </div>
+                  <div className="text-slate-600 text-[11px] flex justify-between">
+                    <span className="text-slate-400">Timestamp:</span>
+                    <span className="text-slate-700">{item.uploadTimestamp ? new Date(item.uploadTimestamp).toLocaleString() : 'N/A'}</span>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 
-          <div className="bg-white border border-slate-200 rounded p-5 space-y-4">
-            <h2 className="text-sm font-semibold text-slate-900">Activity and Audit History</h2>
-            <div className="divide-y divide-slate-100 text-xs">
-              <div className="py-2.5 first:pt-0">
-                <div className="flex justify-between text-slate-800 font-medium">
-                  <span>Claim Intake Received</span>
-                  <span className="text-slate-400 font-normal">{new Date(claim.createdAt).toLocaleString()}</span>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="bg-white border border-slate-200 rounded p-4 space-y-2 text-xs">
+              <h3 className="font-semibold text-slate-900 border-b border-slate-100 pb-1.5 flex items-center gap-1.5">
+                <Car size={14} className="text-slate-500" /> Vehicle Information
+              </h3>
+              <div className="space-y-1.5 text-slate-600">
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Registration:</span>
+                  <span className="font-mono font-medium text-slate-900">{vehicle.registration}</span>
                 </div>
-                <p className="text-slate-500 text-[11px] mt-0.5">Physical evidence uploaded via {claim.claimType || 'Photo'}.</p>
-              </div>
-              <div className="py-2.5">
-                <div className="flex justify-between text-slate-800 font-medium">
-                  <span>Multi-Modal AI Pipeline Executed</span>
-                  <span className="text-slate-400 font-normal">{new Date(claim.createdAt).toLocaleString()}</span>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Make & Model:</span>
+                  <span className="font-medium text-slate-800">{vehicle.year} {vehicle.make} {vehicle.model}</span>
                 </div>
-                <p className="text-slate-500 text-[11px] mt-0.5">
-                  Initial recommendation: {decision.recommendation || 'Evaluated'} ({decision.confidence || 'Standard'} confidence).
-                </p>
-              </div>
-              {claim.assessorDecision && (
-                <div className="py-2.5">
-                  <div className="flex justify-between text-slate-800 font-medium">
-                    <span>Assessor Decision Override</span>
-                    <span className="text-slate-400 font-normal">
-                      {claim.assessorDecision.overriddenAt ? new Date(claim.assessorDecision.overriddenAt).toLocaleString() : 'Recorded'}
-                    </span>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Year:</span>
+                  <span className="text-slate-800">{vehicle.year}</span>
+                </div>
+                {vehicle.vin && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">VIN:</span>
+                    <span className="font-mono text-slate-700 truncate max-w-[150px]">{vehicle.vin}</span>
                   </div>
-                  <p className="text-slate-600 text-[11px] mt-0.5">
-                    Verdict: <span className="font-semibold">{claim.assessorDecision.newRecommendation}</span> • Rationale: "{claim.assessorDecision.reason}"
-                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="bg-white border border-slate-200 rounded p-4 space-y-2 text-xs">
+              <h3 className="font-semibold text-slate-900 border-b border-slate-100 pb-1.5 flex items-center gap-1.5">
+                <AlertTriangle size={14} className="text-slate-500" /> Incident Information
+              </h3>
+              <div className="space-y-1.5 text-slate-600">
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Date & Time:</span>
+                  <span className="font-medium text-slate-800">{incident.date} at {incident.time}</span>
                 </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Incident Type:</span>
+                  <span className="font-medium text-slate-800">{incident.incidentType}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Location:</span>
+                  <span className="text-slate-800 truncate max-w-[150px]">{incident.location}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="bg-white border border-slate-200 rounded p-4 space-y-2 text-xs">
+              <h3 className="font-semibold text-slate-900 border-b border-slate-100 pb-1.5 flex items-center gap-1.5">
+                <User size={14} className="text-slate-500" /> Customer Information
+              </h3>
+              <div className="space-y-1.5 text-slate-600">
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Customer ID:</span>
+                  <span className="font-mono font-medium text-slate-900">{customer.customerId || 'CUST-UNASSIGNED'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Full Name:</span>
+                  <span className="font-medium text-slate-800">{customer.name}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Email:</span>
+                  <span className="text-slate-800 truncate max-w-[150px]">{customer.email || 'N/A'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Phone:</span>
+                  <span className="text-slate-800">{customer.phone || 'N/A'}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white border border-slate-200 rounded p-4 space-y-2 text-xs">
+              <h3 className="font-semibold text-slate-900 border-b border-slate-100 pb-1.5 flex items-center gap-1.5">
+                <ShieldCheck size={14} className="text-slate-500" /> Policy Information
+              </h3>
+              <div className="space-y-1.5 text-slate-600">
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Policy Number:</span>
+                  <span className="font-mono font-medium text-slate-900">{policy.policyNumber}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Policy Type:</span>
+                  <span className="font-medium text-slate-800">{policy.policyType}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Coverage Type:</span>
+                  <span className="text-slate-800">{policy.coverageType}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Deductible:</span>
+                  <span className="font-semibold text-slate-900">{policy.deductible}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded p-5 space-y-2">
+            <h3 className="text-xs font-semibold text-slate-800">Claimant Incident Description</h3>
+            <p className="text-xs text-slate-600 bg-slate-50 p-3 rounded border border-slate-200 leading-relaxed">
+              "{incident.description}"
+            </p>
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded p-5 space-y-4">
+            <h2 className="text-sm font-semibold text-slate-900">Audit History</h2>
+            <div className="divide-y divide-slate-100 text-xs">
+              {auditHistory.length === 0 ? (
+                <p className="text-slate-500 py-2">No audit entries recorded.</p>
+              ) : (
+                auditHistory.slice().reverse().map((entry, idx) => (
+                  <div key={idx} className="py-2.5 first:pt-0">
+                    <div className="flex justify-between text-slate-800 font-medium">
+                      <span>{entry.action?.replace(/_/g, ' ')}</span>
+                      <span className="text-slate-400 font-normal">
+                        {entry.timestamp ? new Date(entry.timestamp).toLocaleString() : 'N/A'}
+                      </span>
+                    </div>
+                    <p className="text-slate-600 text-[11px] mt-0.5">
+                      Actor: <span className="font-medium text-slate-800">{entry.actor?.name || 'System'}</span> ({entry.actor?.role || 'SYSTEM'})
+                      {entry.newStatus && <span> • State: <span className="font-mono">{entry.previousStatus || 'INIT'} &rarr; {entry.newStatus}</span></span>}
+                    </p>
+                    {entry.details && (
+                      <p className="text-slate-500 text-[11px] mt-0.5 italic">{entry.details}</p>
+                    )}
+                  </div>
+                ))
               )}
             </div>
           </div>
@@ -342,23 +508,23 @@ const ClaimDetail = () => {
         <div className="lg:col-span-5 space-y-6">
           <div className="bg-white border border-slate-200 rounded p-5 space-y-4">
             <div>
-              <h2 className="text-sm font-semibold text-slate-900">Assessment Summary</h2>
-              <p className="text-xs text-slate-500">Synthesized evaluation of damage, fraud risk, and consistency.</p>
+              <h2 className="text-sm font-semibold text-slate-900">AI Assessment</h2>
+              <p className="text-xs text-slate-500">Autonomous evaluation decoupled from claim settlement state.</p>
             </div>
 
             <div className={`p-4 rounded border ${
-              decision.recommendation === 'APPROVE'
+              aiRecommendation === 'APPROVE'
                 ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                : decision.recommendation === 'REJECT'
+                : aiRecommendation === 'REJECT'
                 ? 'bg-rose-50 border-rose-200 text-rose-900'
                 : 'bg-amber-50 border-amber-200 text-amber-900'
             }`}>
               <div className="flex items-center justify-between font-semibold text-xs mb-1">
-                <span>AI Recommendation: {decision.recommendation || 'Under Review'}</span>
-                <span className="uppercase text-[10px] tracking-wider opacity-90">{decision.confidence || 'Standard'} Confidence</span>
+                <span>AI Recommendation: {aiRecommendation}</span>
+                <span className="uppercase text-[10px] tracking-wider opacity-90">{aiConfidence} Confidence</span>
               </div>
               <p className="text-xs mt-2 leading-relaxed opacity-95">
-                {decision.explanation || 'Claim analysis complete.'}
+                {aiExplanation || 'Multi-modal analysis complete.'}
               </p>
             </div>
 
@@ -366,10 +532,10 @@ const ClaimDetail = () => {
               <div>
                 <div className="flex justify-between text-slate-700 font-medium mb-1">
                   <span>Damage Score</span>
-                  <span className="font-semibold text-slate-900">{(decision.scores?.damage || 0).toFixed(1)} / 10</span>
+                  <span className="font-semibold text-slate-900">{(scores.damage || 0).toFixed(1)} / 10</span>
                 </div>
                 <div className="w-full bg-slate-100 rounded h-1.5 overflow-hidden">
-                  <div className="bg-blue-600 h-1.5 rounded" style={{ width: `${Math.min(100, (decision.scores?.damage || 0) * 10)}%` }} />
+                  <div className="bg-blue-600 h-1.5 rounded" style={{ width: `${Math.min(100, (scores.damage || 0) * 10)}%` }} />
                 </div>
                 <div className="flex justify-between text-[11px] text-slate-500 mt-1">
                   <span>Severity: {damage.severity || 'Moderate'}</span>
@@ -380,16 +546,16 @@ const ClaimDetail = () => {
               <div>
                 <div className="flex justify-between text-slate-700 font-medium mb-1">
                   <span>Fraud & Tampering Risk</span>
-                  <span className="font-semibold text-slate-900">{(decision.scores?.fraud || 0).toFixed(1)} / 10</span>
+                  <span className="font-semibold text-slate-900">{(scores.fraud || 0).toFixed(1)} / 10</span>
                 </div>
                 <div className="w-full bg-slate-100 rounded h-1.5 overflow-hidden">
                   <div
-                    className={`h-1.5 rounded ${(decision.scores?.fraud || 0) >= 7 ? 'bg-rose-600' : (decision.scores?.fraud || 0) >= 4 ? 'bg-amber-500' : 'bg-emerald-600'}`}
-                    style={{ width: `${Math.min(100, (decision.scores?.fraud || 0) * 10)}%` }}
+                    className={`h-1.5 rounded ${(scores.fraud || 0) >= 7 ? 'bg-rose-600' : (scores.fraud || 0) >= 4 ? 'bg-amber-500' : 'bg-emerald-600'}`}
+                    style={{ width: `${Math.min(100, (scores.fraud || 0) * 10)}%` }}
                   />
                 </div>
                 <div className="flex justify-between text-[11px] text-slate-500 mt-1">
-                  <span>Duplicate check: {fraud.isDuplicate ? 'Duplicate Flagged' : 'Unique signature'}</span>
+                  <span>Duplicate: {fraud.isDuplicate ? 'Duplicate Detected' : 'Unique signature'}</span>
                   <span>Metadata: {metaFraud.editingSoftwareDetected ? 'Edited' : 'Clean'}</span>
                 </div>
               </div>
@@ -397,12 +563,12 @@ const ClaimDetail = () => {
               <div>
                 <div className="flex justify-between text-slate-700 font-medium mb-1">
                   <span>Narrative vs Visual Consistency</span>
-                  <span className="font-semibold text-slate-900">{(decision.scores?.consistency || 0).toFixed(1)} / 10</span>
+                  <span className="font-semibold text-slate-900">{(scores.consistency || 0).toFixed(1)} / 10</span>
                 </div>
                 <div className="w-full bg-slate-100 rounded h-1.5 overflow-hidden">
                   <div
-                    className={`h-1.5 rounded ${(decision.scores?.consistency || 0) >= 7 ? 'bg-emerald-600' : (decision.scores?.consistency || 0) >= 4 ? 'bg-amber-500' : 'bg-rose-600'}`}
-                    style={{ width: `${Math.min(100, (decision.scores?.consistency || 0) * 10)}%` }}
+                    className={`h-1.5 rounded ${(scores.consistency || 0) >= 7 ? 'bg-emerald-600' : (scores.consistency || 0) >= 4 ? 'bg-amber-500' : 'bg-rose-600'}`}
+                    style={{ width: `${Math.min(100, (scores.consistency || 0) * 10)}%` }}
                   />
                 </div>
               </div>
@@ -420,64 +586,194 @@ const ClaimDetail = () => {
                 </div>
               </div>
             )}
-
-            {damage.description && (
-              <div className="pt-2 border-t border-slate-100">
-                <div className="text-xs font-semibold text-slate-700 mb-1">AI Damage Assessment Note</div>
-                <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-2.5 rounded border border-slate-200">
-                  {damage.description}
-                </p>
-              </div>
-            )}
           </div>
 
           <div className="bg-white border border-slate-200 rounded p-5 space-y-4">
-            <h2 className="text-sm font-semibold text-slate-900">Human Decision</h2>
-            <p className="text-xs text-slate-500">Record final assessment determination or initiate inquiry.</p>
-
-            <div className="flex flex-col gap-2 pt-1">
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  disabled={actionLoading}
-                  onClick={() => handleDecisionAction('APPROVED', 'Claim approved by assessor.')}
-                  className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-medium rounded transition"
-                >
-                  Approve Claim
-                </button>
-                <button
-                  type="button"
-                  disabled={actionLoading}
-                  onClick={() => setShowReqInfoModal(true)}
-                  className="px-3 py-2 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-800 text-xs font-medium rounded border border-slate-200 transition"
-                >
-                  Request Information
-                </button>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  disabled={actionLoading}
-                  onClick={() => handleDecisionAction('REJECTED', 'Claim rejected by assessor.')}
-                  className="px-3 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-xs font-medium rounded transition"
-                >
-                  Reject Claim
-                </button>
-                <button
-                  type="button"
-                  disabled={actionLoading}
-                  onClick={() => setShowOverrideDialog(!showOverrideDialog)}
-                  className="px-3 py-2 bg-slate-800 hover:bg-slate-900 disabled:opacity-50 text-white text-xs font-medium rounded transition"
-                >
-                  Manual Override
-                </button>
-              </div>
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-slate-900">Human Assessment & Decision</h2>
+              {getStatusBadge(claim.status)}
             </div>
+
+            {humanAssessment.action && (
+              <div className="p-3 bg-slate-50 rounded border border-slate-200 text-xs space-y-1.5">
+                <span className="font-semibold text-slate-800 block text-[11px] uppercase tracking-wider">Latest Assessor Assessment</span>
+                <div className="text-slate-600 flex justify-between">
+                  <span>Assessor:</span>
+                  <span className="font-medium text-slate-900">{humanAssessment.assessor?.name || 'Assessor'}</span>
+                </div>
+                <div className="text-slate-600 flex justify-between">
+                  <span>Action:</span>
+                  <span className="font-semibold text-slate-800">{humanAssessment.action}</span>
+                </div>
+                {humanAssessment.timestamp && (
+                  <div className="text-slate-600 flex justify-between">
+                    <span>Date:</span>
+                    <span className="text-slate-700">{new Date(humanAssessment.timestamp).toLocaleString()}</span>
+                  </div>
+                )}
+                {humanAssessment.reason && (
+                  <p className="text-[11px] text-slate-600 mt-1 italic bg-white p-2 rounded border border-slate-200">
+                    "{humanAssessment.reason}"
+                  </p>
+                )}
+              </div>
+            )}
+
+            {decision && decision.outcome !== 'PENDING' && (
+              <div className="p-3 bg-blue-50/50 rounded border border-blue-200 text-xs space-y-1.5">
+                <span className="font-semibold text-blue-900 block text-[11px] uppercase tracking-wider">Recorded Adjudication Decision</span>
+                <div className="text-slate-700 flex justify-between">
+                  <span>Outcome:</span>
+                  <span className="font-bold text-slate-900">{decision.outcome}</span>
+                </div>
+                <div className="text-slate-700 flex justify-between">
+                  <span>Decision Maker:</span>
+                  <span className="font-medium text-slate-900">{decision.decisionMaker?.name || 'Authorized Assessor'}</span>
+                </div>
+                {decision.timestamp && (
+                  <div className="text-slate-700 flex justify-between">
+                    <span>Decided At:</span>
+                    <span className="text-slate-700">{new Date(decision.timestamp).toLocaleString()}</span>
+                  </div>
+                )}
+                {decision.reason && (
+                  <p className="text-[11px] text-slate-600 mt-1 italic bg-white p-2 rounded border border-slate-200">
+                    "{decision.reason}"
+                  </p>
+                )}
+              </div>
+            )}
+
+            {claim.status === CLAIM_STATUS.CLOSED ? (
+              <div className="p-3 bg-slate-50 rounded border border-slate-200 text-xs text-slate-600 text-center">
+                This claim is closed. Lifecycle is terminal and no further transitions can be applied.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Available Workflow Actions</div>
+
+                {claim.status === CLAIM_STATUS.SUBMITTED && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      disabled={actionLoading}
+                      onClick={() => handleDecisionAction(CLAIM_STATUS.PROCESSING, 'Automated processing initiated')}
+                      className="py-2 px-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-medium rounded transition"
+                    >
+                      Begin Processing
+                    </button>
+                    <button
+                      type="button"
+                      disabled={actionLoading}
+                      onClick={() => handleDecisionAction(CLAIM_STATUS.CLOSED, 'Submission withdrawn or cancelled')}
+                      className="py-2 px-3 bg-slate-700 hover:bg-slate-800 disabled:opacity-50 text-white text-xs font-medium rounded transition"
+                    >
+                      Close Claim
+                    </button>
+                  </div>
+                )}
+
+                {claim.status === CLAIM_STATUS.PROCESSING && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      disabled={actionLoading}
+                      onClick={() => handleDecisionAction(CLAIM_STATUS.AI_ASSESSED, 'AI evaluation models finished')}
+                      className="py-2 px-3 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-medium rounded transition"
+                    >
+                      Mark AI Assessed
+                    </button>
+                    <button
+                      type="button"
+                      disabled={actionLoading}
+                      onClick={() => handleDecisionAction(CLAIM_STATUS.PENDING_REVIEW, 'Moved directly to review queue')}
+                      className="py-2 px-3 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-xs font-medium rounded transition"
+                    >
+                      Queue for Review
+                    </button>
+                  </div>
+                )}
+
+                {claim.status === CLAIM_STATUS.AI_ASSESSED && (
+                  <button
+                    type="button"
+                    disabled={actionLoading}
+                    onClick={() => handleDecisionAction(CLAIM_STATUS.PENDING_REVIEW, 'Queued for human assessment')}
+                    className="w-full py-2 px-3 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-xs font-medium rounded transition"
+                  >
+                    Move to Assessor Queue (Pending Review)
+                  </button>
+                )}
+
+                {['PENDING_REVIEW', 'NEEDS_INFORMATION'].includes(claim.status) && (
+                  <button
+                    type="button"
+                    disabled={actionLoading}
+                    onClick={() => handleDecisionAction(CLAIM_STATUS.UNDER_REVIEW, 'Assessor opened claim for detailed investigation')}
+                    className="w-full py-2 px-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-medium rounded transition"
+                  >
+                    Start Investigation (Move to Under Review)
+                  </button>
+                )}
+
+                {claim.status === CLAIM_STATUS.UNDER_REVIEW && (
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        disabled={actionLoading}
+                        onClick={() => handleDecisionAction(CLAIM_STATUS.APPROVED, 'Claim approved following evidence review')}
+                        className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-medium rounded transition"
+                      >
+                        Approve Claim
+                      </button>
+                      <button
+                        type="button"
+                        disabled={actionLoading}
+                        onClick={() => setShowReqInfoModal(true)}
+                        className="px-3 py-2 bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white text-xs font-medium rounded transition"
+                      >
+                        Request Information
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        disabled={actionLoading}
+                        onClick={() => handleDecisionAction(CLAIM_STATUS.REJECTED, 'Claim rejected based on evidence inconsistencies')}
+                        className="px-3 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-xs font-medium rounded transition"
+                      >
+                        Reject Claim
+                      </button>
+                      <button
+                        type="button"
+                        disabled={actionLoading}
+                        onClick={() => setShowOverrideDialog(!showOverrideDialog)}
+                        className="px-3 py-2 bg-slate-800 hover:bg-slate-900 disabled:opacity-50 text-white text-xs font-medium rounded transition"
+                      >
+                        Manual Override
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {['APPROVED', 'REJECTED'].includes(claim.status) && (
+                  <button
+                    type="button"
+                    disabled={actionLoading}
+                    onClick={() => handleDecisionAction(CLAIM_STATUS.CLOSED, 'Settlement and adjudication completed. Claim closed.')}
+                    className="w-full py-2 px-3 bg-slate-800 hover:bg-slate-900 disabled:opacity-50 text-white text-xs font-medium rounded transition"
+                  >
+                    Archive & Close Claim
+                  </button>
+                )}
+              </div>
+            )}
 
             {showOverrideDialog && (
               <form onSubmit={handleOverrideSubmit} className="pt-3 border-t border-slate-100 space-y-3">
-                <div className="text-xs font-semibold text-slate-800">Assessor Override Form</div>
+                <div className="text-xs font-semibold text-slate-800">Record Assessor Override</div>
                 <div>
                   <label className="block text-[11px] text-slate-600 mb-1">New Determination</label>
                   <select
@@ -487,7 +783,7 @@ const ClaimDetail = () => {
                   >
                     <option value="">Select determination...</option>
                     <option value="APPROVE">APPROVE (Fast-track settlement)</option>
-                    <option value="MANUAL_REVIEW">MANUAL_REVIEW (Escalate for field inspection)</option>
+                    <option value="MANUAL_REVIEW">MANUAL_REVIEW (Further inspection)</option>
                     <option value="REJECT">REJECT (Denial based on evidence)</option>
                   </select>
                 </div>
@@ -527,14 +823,14 @@ const ClaimDetail = () => {
                   rows={3}
                   value={reqInfoNotes}
                   onChange={(e) => setReqInfoNotes(e.target.value)}
-                  placeholder="Specify missing photos, police FIR, or clarification needed..."
+                  placeholder="Specify required documents, photos, or police reports..."
                   className="w-full text-xs bg-white border border-slate-200 rounded p-2 text-slate-800 focus:outline-none focus:ring-1 focus:ring-slate-400"
                 />
                 <div className="flex gap-2">
                   <button
                     type="submit"
                     disabled={actionLoading}
-                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium py-1.5 rounded transition"
+                    className="flex-1 bg-orange-600 hover:bg-orange-700 text-white text-xs font-medium py-1.5 rounded transition"
                   >
                     Send Request
                   </button>
@@ -556,7 +852,7 @@ const ClaimDetail = () => {
               onClick={() => setShowTechnicalAnalysis(!showTechnicalAnalysis)}
               className="w-full p-4 text-left flex items-center justify-between text-xs font-semibold text-slate-800 hover:bg-slate-50 transition"
             >
-              <span>Technical Analysis</span>
+              <span>Technical Diagnostics & Signatures</span>
               {showTechnicalAnalysis ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
             </button>
 
