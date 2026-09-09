@@ -10,7 +10,6 @@ import ClaimDetailPage from '../pages/ClaimDetailPage';
 import CustomersPage from '../pages/CustomersPage';
 import PoliciesPage from '../pages/PoliciesPage';
 import ReportsPage from '../pages/ReportsPage';
-import SettingsPage from '../pages/SettingsPage';
 
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated, loading } = useAuth();
@@ -118,14 +117,6 @@ const AppRoutes = () => {
         element={
           <ProtectedRoute>
             <ReportsPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/settings"
-        element={
-          <ProtectedRoute>
-            <SettingsPage />
           </ProtectedRoute>
         }
       />

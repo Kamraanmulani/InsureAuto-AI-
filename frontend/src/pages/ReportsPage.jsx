@@ -57,10 +57,6 @@ const ReportsPage = () => {
 
   return (
     <div className="space-y-6">
-      <div className="border-b border-slate-200 pb-5">
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">Reports</h1>
-        <p className="text-sm text-slate-500 mt-1">Measurable operational statistics across intake volume, outcomes, and risk.</p>
-      </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-white p-4 rounded border border-slate-200">

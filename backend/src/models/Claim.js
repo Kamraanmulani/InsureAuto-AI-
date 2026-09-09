@@ -130,6 +130,8 @@ const aiAssessmentSchema = new mongoose.Schema({
     default: []
   },
   explanation: { type: String, default: '' },
+  reasons: { type: [String], default: [] },
+  pillarBreakdown: mongoose.Schema.Types.Mixed,
   scores: {
     damage: { type: Number, default: 0 },
     fraud: { type: Number, default: 0 },

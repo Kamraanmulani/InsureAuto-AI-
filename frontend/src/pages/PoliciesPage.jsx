@@ -70,10 +70,6 @@ const PoliciesPage = () => {
 
   return (
     <div className="space-y-6">
-      <div className="border-b border-slate-200 pb-5">
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">Policies</h1>
-        <p className="text-sm text-slate-500 mt-1">Operational policy registry, coverage terms, and underwriting claims linkage.</p>
-      </div>
 
       <div className="flex justify-between items-center">
         <div className="relative w-full sm:w-80">

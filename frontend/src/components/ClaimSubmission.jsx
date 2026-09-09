@@ -116,10 +116,6 @@ const ClaimSubmission = ({ onClaimSubmitted }) => {
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
-      <div className="border-b border-slate-200 pb-5">
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">New Claim Intake</h1>
-        <p className="text-sm text-slate-500 mt-1">Submit physical vehicle evidence and claim details for automated assessment.</p>
-      </div>
 
       <form onSubmit={handleSubmit} className="bg-white border border-slate-200 rounded p-6 space-y-6">
         <div>

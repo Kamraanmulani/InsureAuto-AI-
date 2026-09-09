@@ -89,6 +89,8 @@ const processClaimJob = async (identifier) => {
       recommendation: decisionData.recommendation || 'MANUAL_REVIEW',
       confidence: decisionData.confidence || 'MEDIUM',
       explanation: decisionData.explanation || '',
+      reasons: decisionData.reasons || [],
+      pillarBreakdown: decisionData.pillar_breakdown || undefined,
       scores: decisionData.scores || {
         damage: damageAssessment.score || 0,
         fraud: fraudAnalysis.overall_score || 0,

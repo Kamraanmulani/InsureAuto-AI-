@@ -97,22 +97,14 @@ const ClaimsDashboard = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-200 pb-5">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Claims overview</h1>
-          <p className="text-sm text-slate-500 mt-1">
-            Operational triage and attention items across motor insurance claims.
-          </p>
-        </div>
-        <div>
-          <button
-            type="button"
-            onClick={() => navigate('/submit')}
-            className="inline-flex items-center justify-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded shadow-sm transition"
-          >
-            New Claim
-          </button>
-        </div>
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => navigate('/submit')}
+          className="inline-flex items-center justify-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded shadow-sm transition"
+        >
+          New Claim
+        </button>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

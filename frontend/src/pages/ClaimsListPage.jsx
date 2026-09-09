@@ -142,22 +142,6 @@ const ClaimsListPage = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-200 pb-5">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Claims</h1>
-          <p className="text-sm text-slate-500 mt-1">Review and manage submitted motor insurance claims.</p>
-        </div>
-        <div>
-          <button
-            type="button"
-            onClick={() => navigate('/submit')}
-            className="inline-flex items-center justify-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded shadow-sm transition"
-          >
-            New Claim
-          </button>
-        </div>
-      </div>
-
       <div className="border-b border-slate-200 flex space-x-6 text-sm font-medium overflow-x-auto">
         {TABS.map((tab) => (
           <button
@@ -187,7 +171,7 @@ const ClaimsListPage = () => {
           />
         </div>
 
-        <div className="flex items-center gap-2 self-end sm:self-auto">
+        <div className="flex items-center gap-3 self-end sm:self-auto">
           <div className="flex items-center gap-1.5 text-xs text-slate-500">
             <ArrowUpDown size={14} />
             <span>Sort by:</span>
@@ -202,6 +186,13 @@ const ClaimsListPage = () => {
             <option value="risk_desc">Highest Risk</option>
             <option value="damage_desc">Highest Damage Score</option>
           </select>
+          <button
+            type="button"
+            onClick={() => navigate('/submit')}
+            className="inline-flex items-center justify-center px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded shadow-sm transition whitespace-nowrap"
+          >
+            New Claim
+          </button>
         </div>
       </div>
 
