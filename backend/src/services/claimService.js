@@ -49,6 +49,8 @@ const processClaimJob = async (identifier) => {
 
     claim.aiAssessment = {
       damageAssessment: {
+        available: damageAssessment.available !== undefined ? damageAssessment.available : (damageAssessment.score > 0 || damageAssessment.damage_score > 0),
+        status: damageAssessment.status || (damageAssessment.available === false ? 'MODEL_UNAVAILABLE' : 'EVALUATED'),
         severity: damageAssessment.severity || 'Unknown',
         damagedParts: damageAssessment.damaged_parts || [],
         description: damageAssessment.description || '',
@@ -210,24 +212,24 @@ const createClaimAndDispatch = async ({ uploadedFile, claimData, user }) => {
     claimType: isVideo ? 'VIDEO_WALK_AROUND' : 'PHOTO_IMAGE',
     status: CLAIM_STATUS.PROCESSING,
     customer: {
-      customerId: `CUST-${(claimData.policy_id || '999').replace(/\D/g, '').slice(0, 4) || '101'}`,
-      name: claimData.customer_name || `Policyholder (${claimData.policy_id || 'Unassigned'})`,
-      email: claimData.customer_email || 'client@insureauto.ai',
-      phone: claimData.customer_phone || '+1 (555) 019-2831'
+      customerId: claimData.customer_id || (claimData.policy_id ? `CUST-${claimData.policy_id.replace(/\D/g, '').slice(0, 4) || '101'}` : 'CUST-UNASSIGNED'),
+      name: claimData.customer_name || claimData.policy_holder_name || 'Policyholder',
+      email: claimData.customer_email || '',
+      phone: claimData.customer_phone || ''
     },
     policy: {
       policyNumber: claimData.policy_id || 'POL-UNASSIGNED',
-      policyType: 'Comprehensive Motor Policy',
-      coverageType: 'Full Collision & Comprehensive',
-      deductible: '$500',
-      effectiveDate: 'Jan 2026'
+      policyType: claimData.policy_type || 'Comprehensive Motor Policy',
+      coverageType: claimData.coverage_type || 'Full Collision & Comprehensive',
+      deductible: claimData.deductible || '$500',
+      effectiveDate: claimData.effective_date || 'Jan 2026'
     },
     vehicle: {
       registration: claimData.vehicle_registration || 'UNREGISTERED',
       make: claimData.vehicle_make || 'Standard',
       model: claimData.vehicle_model || 'Vehicle',
       year: claimData.vehicle_year ? parseInt(claimData.vehicle_year, 10) : 2022,
-      vin: `1HGCR2F8${rawJobId.slice(0, 8).toUpperCase()}`
+      vin: claimData.vehicle_vin || null
     },
     incident: {
       date: claimData.claim_date,
@@ -330,6 +332,7 @@ const retryClaimProcessing = async (identifier, user) => {
   const actorName = user ? user.name : 'Assessor Console';
   const actorRole = user ? user.role : 'ASSESSOR';
 
+  const previousStatus = claim.status;
   claim.status = CLAIM_STATUS.PROCESSING;
 
   if (claim.evidence && claim.evidence.length > 0) {
@@ -352,7 +355,7 @@ const retryClaimProcessing = async (identifier, user) => {
       name: actorName,
       role: actorRole
     },
-    previousStatus: claim.status,
+    previousStatus,
     newStatus: CLAIM_STATUS.PROCESSING,
     details: 'Assessor requested reprocessing of evidence analysis pipeline'
   });
@@ -392,32 +395,46 @@ const getProcessingStatus = async (identifier) => {
 
 const getClaims = async ({ status, recommendation, policy_id, claim_type, search, limit, skip }) => {
   const filter = {};
+  const andConditions = [];
+
   if (status) filter.status = status;
-  if (recommendation) {
-    filter.$or = [
-      { 'aiAssessment.recommendation': recommendation },
-      { 'decision.recommendation': recommendation }
-    ];
-  }
-  if (policy_id) {
-    filter.$or = [
-      { 'policy.policyNumber': policy_id },
-      { 'claimInfo.policyId': policy_id }
-    ];
-  }
   if (claim_type) filter.claimType = claim_type;
+
+  if (recommendation) {
+    andConditions.push({
+      $or: [
+        { 'aiAssessment.recommendation': recommendation },
+        { 'decision.recommendation': recommendation }
+      ]
+    });
+  }
+
+  if (policy_id) {
+    andConditions.push({
+      $or: [
+        { 'policy.policyNumber': policy_id },
+        { 'claimInfo.policyId': policy_id }
+      ]
+    });
+  }
 
   if (search && search.trim()) {
     const searchRegex = new RegExp(search.trim(), 'i');
-    filter.$or = [
-      { claimId: searchRegex },
-      { jobId: searchRegex },
-      { 'customer.name': searchRegex },
-      { 'policy.policyNumber': searchRegex },
-      { 'vehicle.registration': searchRegex },
-      { 'incident.description': searchRegex },
-      { 'incident.location': searchRegex }
-    ];
+    andConditions.push({
+      $or: [
+        { claimId: searchRegex },
+        { jobId: searchRegex },
+        { 'customer.name': searchRegex },
+        { 'policy.policyNumber': searchRegex },
+        { 'vehicle.registration': searchRegex },
+        { 'incident.description': searchRegex },
+        { 'incident.location': searchRegex }
+      ]
+    });
+  }
+
+  if (andConditions.length > 0) {
+    filter.$and = andConditions;
   }
 
   const claims = await Claim.find(filter)

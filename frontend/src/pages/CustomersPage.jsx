@@ -48,11 +48,11 @@ const CustomersPage = () => {
     const policyId = claim.policy?.policyNumber || claim.claimInfo?.policyId || 'POL-UNASSIGNED';
     if (!customerMap[policyId]) {
       customerMap[policyId] = {
-        id: claim.customer?.customerId || `CUST-${policyId.replace(/\D/g, '').slice(0, 4) || '999'}`,
-        name: claim.customer?.name || `Policyholder ${policyId}`,
+        id: claim.customer?.customerId || (policyId !== 'POL-UNASSIGNED' ? `CUST-${policyId.replace(/\D/g, '').slice(0, 4) || '999'}` : 'CUST-UNASSIGNED'),
+        name: claim.customer?.name || (policyId !== 'POL-UNASSIGNED' ? `Policyholder (${policyId})` : 'Unassigned Policyholder'),
         policy: policyId,
-        email: claim.customer?.email || `policyholder-${policyId.toLowerCase()}@client.org`,
-        phone: claim.customer?.phone || '+1 (555) 000-0000',
+        email: claim.customer?.email || 'N/A',
+        phone: claim.customer?.phone || 'N/A',
         claims: [],
         openReviews: 0,
         maxRisk: 'Low',

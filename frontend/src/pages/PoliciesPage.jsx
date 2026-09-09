@@ -5,10 +5,10 @@ import { claimAPI } from '../services/api';
 
 const DEFAULT_POLICIES = [
   { id: 'POL-4402', holder: 'Robert Vance', vehicle: '2022 Honda Civic', coverage: 'Comprehensive & Collision', deductible: '$500', status: 'Active', term: 'Jan 2026 – Jan 2027' },
-  { id: 'POL-8831', holder: 'Sarah Jenkins', vehicle: '2023 Toyota RAV4', coverage: 'Comprehensive', deductible: '$750', status: 'Active', term: 'Mar 2025 – Mar 2026' },
-  { id: 'POL-1920', holder: 'David Chen', vehicle: '2021 Ford F-150', coverage: 'Full Collision', deductible: '$1,000', status: 'Active', term: 'Jun 2025 – Jun 2026' },
-  { id: 'POL-3319', holder: 'Elena Rostova', vehicle: '2024 Tesla Model 3', coverage: 'Premium Comprehensive', deductible: '$500', status: 'Active', term: 'Sep 2025 – Sep 2026' },
-  { id: 'POL-7722', holder: 'Marcus Bell', vehicle: '2020 BMW 330i', coverage: 'Standard Collision', deductible: '$1,000', status: 'Under Review', term: 'Nov 2025 – Nov 2026' }
+  { id: 'POL-8831', holder: 'Sarah Jenkins', vehicle: '2023 Toyota RAV4', coverage: 'Comprehensive', deductible: '$750', status: 'Active', term: 'Mar 2026 – Mar 2027' },
+  { id: 'POL-1920', holder: 'David Chen', vehicle: '2021 Ford F-150', coverage: 'Full Collision', deductible: '$1,000', status: 'Active', term: 'Jun 2026 – Jun 2027' },
+  { id: 'POL-3319', holder: 'Elena Rostova', vehicle: '2024 Tesla Model 3', coverage: 'Premium Comprehensive', deductible: '$500', status: 'Active', term: 'Sep 2026 – Sep 2027' },
+  { id: 'POL-7722', holder: 'Marcus Bell', vehicle: '2020 BMW 330i', coverage: 'Standard Collision', deductible: '$1,000', status: 'Under Review', term: 'Nov 2026 – Nov 2027' }
 ];
 
 const PoliciesPage = () => {

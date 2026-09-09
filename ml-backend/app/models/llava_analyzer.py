@@ -67,54 +67,38 @@ class LLaVADamageAnalyzer:
         is_video: bool = False, 
         primary_timestamp: float = 0.0
     ) -> Dict[str, Any]:
-        """
-        Intelligent fallback analyzer when Ollama / LLaVA model is not installed.
-        Extracts damage context from claim description and vehicle metadata to return structured assessment.
-        """
         desc_lower = (claim_description or "").lower()
-        
-        # Identify damaged parts from description
         detected_parts = []
         for part in ["front bumper", "rear bumper", "fender", "door", "hood", "windshield", "headlight", "tail light", "quarter panel", "grille", "side mirror"]:
             if part in desc_lower:
                 detected_parts.append(part)
-        if not detected_parts:
-            detected_parts = ["front bumper", "body panel"]
-            
-        # Determine severity from description
-        if any(w in desc_lower for w in ["total", "crushed", "severe", "smashed", "destroyed", "heavy"]):
-            severity = "Severe"
-            damage_score = 7.8
-        elif any(w in desc_lower for w in ["moderate", "dent", "collision", "bent", "cracked"]):
-            severity = "Moderate"
-            damage_score = 5.2
-        else:
-            severity = "Minor"
-            damage_score = 3.2
             
         prefix = f"Extracted from walk-around video at t={primary_timestamp:.1f}s. " if is_video else ""
         parsed_analysis = {
             "damaged_parts": detected_parts,
-            "damage_description": f"{prefix}Visible physical impact consistent with reported collision. Automated scan verifies structural damage on {', '.join(detected_parts)}.",
-            "severity": severity,
-            "consistency": "Consistent",
-            "additional_observations": "Damage pattern aligns with reported incident. Keyframe visual geometry matches description."
+            "damage_description": f"{prefix}Vehicle detected. Dedicated damage model unavailable. Assessment derived from claimant description only. Manual review required.",
+            "severity": "Unassessed",
+            "consistency": "Indeterminate",
+            "additional_observations": "Automated visual verification unavailable. Derived from text description for triage only."
         }
         
         raw_text = (
-            f"DAMAGED PARTS:\n" + "\n".join([f"- {p}" for p in detected_parts]) +
+            f"DAMAGED PARTS:\n" + ("\n".join([f"- {p}" for p in detected_parts]) if detected_parts else "- None identified") +
             f"\n\nDAMAGE DESCRIPTION:\n{parsed_analysis['damage_description']}\n\n" +
-            f"SEVERITY RATING:\n{severity}\n\n" +
-            f"CONSISTENCY CHECK:\nConsistent - visible damage directly matches the claimant description.\n\n" +
+            f"SEVERITY RATING:\nUnassessed\n\n" +
+            f"CONSISTENCY CHECK:\nIndeterminate - AI visual analysis unavailable.\n\n" +
             f"ADDITIONAL OBSERVATIONS:\n{parsed_analysis['additional_observations']}"
         )
         
         return {
+            "available": False,
+            "status": "MODEL_UNAVAILABLE",
             "raw_response": raw_text,
             "parsed_analysis": parsed_analysis,
-            "damage_score": damage_score,
-            "severity_level": severity
+            "damage_score": 0.0,
+            "severity_level": "Unassessed"
         }
+
     
     def _encode_image_to_base64(self, image_path: str) -> str:
         """Encode image to base64 for Ollama API"""

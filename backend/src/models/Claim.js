@@ -95,6 +95,8 @@ const incidentSchema = new mongoose.Schema({
 
 const aiAssessmentSchema = new mongoose.Schema({
   damageAssessment: {
+    available: { type: Boolean, default: true },
+    status: { type: String, default: 'EVALUATED' },
     severity: { type: String, default: 'Unknown' },
     damagedParts: { type: [String], default: [] },
     description: { type: String, default: '' },

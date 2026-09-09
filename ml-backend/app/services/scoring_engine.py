@@ -270,14 +270,15 @@ class ScoringEngine:
                     "Primary vehicle could not be distinctly recognized in video keyframes"
                 )
 
-        # Corroborate physical damage with YOLO detections
         if yolo_area_ratio >= 0.05 and yolo_mean_conf >= 0.65:
             decision_reasons.append(
-                f"YOLO verified physical damage across keyframes (coverage: {round(yolo_area_ratio * 100, 1)}%, confidence: {round(yolo_mean_conf, 2)})"
+                f"Vehicle spatial region localized across keyframes (ROI coverage: {round(yolo_area_ratio * 100, 1)}%, localization confidence: {round(yolo_mean_conf, 2)})"
             )
 
-        # Append damage classification
-        decision_reasons.append(f"Assessed damage severity: {damage_category} ({damage_score}/10)")
+        if damage_score > 0:
+            decision_reasons.append(f"Assessed damage severity: {damage_category} ({damage_score}/10)")
+        else:
+            decision_reasons.append("Dedicated damage model unavailable; physical damage unquantified")
 
         explanation = ". ".join(decision_reasons) + "."
 
@@ -345,6 +346,8 @@ class ScoringEngine:
         report = {
             "decision": decision,
             "damage_assessment": {
+                "available": llava.get("available", True if decision["scores"]["damage"] > 0 else False),
+                "status": llava.get("status", "EVALUATED" if decision["scores"]["damage"] > 0 else "MODEL_UNAVAILABLE"),
                 "severity": llava.get("severity_level", "Unknown"),
                 "damaged_parts": llava.get("parsed_analysis", {}).get("damaged_parts", []),
                 "description": llava.get("parsed_analysis", {}).get("damage_description", ""),
@@ -388,6 +391,8 @@ class ScoringEngine:
             "claim_type": "VIDEO_WALK_AROUND",
             "decision": decision,
             "damage_assessment": {
+                "available": llava.get("available", True if decision["scores"]["damage"] > 0 else False),
+                "status": llava.get("status", "EVALUATED" if decision["scores"]["damage"] > 0 else "MODEL_UNAVAILABLE"),
                 "severity": llava.get("severity_level", "Unknown"),
                 "damage_score": decision["scores"]["damage"],
                 "damaged_parts": llava.get("parsed_analysis", {}).get("damaged_parts", []),

@@ -18,7 +18,6 @@ scoring_engine = ScoringEngine()
 video_processor = VideoProcessor()
 
 VIDEO_EXTENSIONS = ('.mp4', '.mov', '.avi', '.mkv', '.webm')
-claims_db: Dict[str, Any] = {}
 
 
 @router.get("/")
@@ -59,7 +58,8 @@ async def _process_video_claim(
     claim_date: str,
     claim_description: str,
     claim_location: str,
-    policy_id: str
+    policy_id: str,
+    job_id: Optional[str] = None
 ) -> Dict[str, Any]:
     if not claim_description or len(claim_description) < 10:
         raise HTTPException(
@@ -67,10 +67,10 @@ async def _process_video_claim(
             detail="Claim description must be at least 10 characters"
         )
 
-    job_id = str(uuid.uuid4())
+    resolved_job_id = job_id.strip() if (job_id and job_id.strip()) else str(uuid.uuid4())
     os.makedirs("data/uploads", exist_ok=True)
     os.makedirs("data/uploads/keyframes", exist_ok=True)
-    temp_video_path = f"data/uploads/{job_id}_{video.filename}"
+    temp_video_path = f"data/uploads/{resolved_job_id}_{video.filename}"
 
     try:
         with open(temp_video_path, "wb") as buffer:
@@ -101,7 +101,7 @@ async def _process_video_claim(
 
         analysis_result = await detection_service.complete_video_claim_analysis(
             scanned_keyframes=scanned_keyframes,
-            job_id=job_id,
+            job_id=resolved_job_id,
             claim_description=claim_description,
             metadata=metadata,
             validation_result=validation,
@@ -128,7 +128,7 @@ async def _process_video_claim(
         secondary_annotated_path = analysis_result["keyframe_selection"].get("secondary_path")
 
         claim_record = {
-            "job_id": job_id,
+            "job_id": resolved_job_id,
             "timestamp": datetime.now().isoformat(),
             "claim_type": "VIDEO_WALK_AROUND",
             "claim_info": {
@@ -139,17 +139,15 @@ async def _process_video_claim(
             },
             "metadata": metadata,
             "report": report,
-            "decision": decision,
             "primary_annotated_keyframe": primary_annotated_path,
             "secondary_annotated_keyframe": secondary_annotated_path
         }
-        claims_db[job_id] = claim_record
 
         return {
             "success": True,
-            "job_id": job_id,
+            "job_id": resolved_job_id,
             "claim_info": claim_record["claim_info"],
-            "primary_annotated_keyframe_url": f"/api/annotated-image/{job_id}",
+            "primary_annotated_keyframe_url": f"/api/annotated-image/{resolved_job_id}",
             "keyframe_timeline": analysis_result["keyframe_selection"].get("ranking", []),
             "report": report,
             "decision": decision
@@ -174,14 +172,16 @@ async def analyze_claim_video(
     claim_date: str = Form(...),
     claim_description: str = Form(...),
     claim_location: str = Form(default="Unknown"),
-    policy_id: str = Form(default="")
+    policy_id: str = Form(default=""),
+    job_id: Optional[str] = Form(default=None)
 ):
     return await _process_video_claim(
         video=video,
         claim_date=claim_date,
         claim_description=claim_description,
         claim_location=claim_location,
-        policy_id=policy_id
+        policy_id=policy_id,
+        job_id=job_id
     )
 
 
@@ -192,7 +192,8 @@ async def analyze_claim(
     claim_date: str = Form(...),
     claim_description: str = Form(...),
     claim_location: str = Form(default="Unknown"),
-    policy_id: str = Form(default="")
+    policy_id: str = Form(default=""),
+    job_id: Optional[str] = Form(default=None)
 ):
     if video is not None:
         return await _process_video_claim(
@@ -200,7 +201,8 @@ async def analyze_claim(
             claim_date=claim_date,
             claim_description=claim_description,
             claim_location=claim_location,
-            policy_id=policy_id
+            policy_id=policy_id,
+            job_id=job_id
         )
 
     if image is not None:
@@ -211,7 +213,8 @@ async def analyze_claim(
                 claim_date=claim_date,
                 claim_description=claim_description,
                 claim_location=claim_location,
-                policy_id=policy_id
+                policy_id=policy_id,
+                job_id=job_id
             )
 
     if image is None:
@@ -226,6 +229,8 @@ async def analyze_claim(
             detail="Claim description must be at least 10 characters"
         )
 
+    resolved_job_id = job_id.strip() if (job_id and job_id.strip()) else None
+
     os.makedirs("data/uploads", exist_ok=True)
     temp_path = f"data/uploads/{image.filename}"
 
@@ -236,7 +241,8 @@ async def analyze_claim(
         preprocess_result = await preprocessing_service.process_claim_image(
             temp_path,
             claim_date,
-            claim_description
+            claim_description,
+            custom_job_id=resolved_job_id
         )
 
         analysis_result = await detection_service.complete_claim_analysis(
@@ -270,11 +276,8 @@ async def analyze_claim(
                 "policy_id": policy_id
             },
             "metadata": preprocess_result["metadata"],
-            "report": report,
-            "annotated_image": analysis_result["yolo_detection"]["annotated_image_path"]
+            "report": report
         }
-
-        claims_db[preprocess_result["job_id"]] = claim_record
 
         return {
             "success": True,
@@ -298,34 +301,20 @@ async def analyze_claim(
 
 
 @router.get("/api/claim/{job_id}")
+@router.get("/api/claim/{job_id}")
 async def get_claim(job_id: str):
-    if job_id not in claims_db:
-        raise HTTPException(status_code=404, detail="Claim not found")
-    return claims_db[job_id]
+    raise HTTPException(
+        status_code=404,
+        detail="Stateless inference engine: Canonical claim records are persisted in MongoDB via the Node.js API"
+    )
 
 
 @router.get("/api/claims")
 async def list_claims():
-    claims_list = []
-    for job_id, claim in claims_db.items():
-        report = claim.get("report", {})
-        decision = report.get("decision", {})
-        fraud_analysis = report.get("fraud_analysis", {})
-        damage_assessment = report.get("damage_assessment", {})
-
-        claims_list.append({
-            "job_id": job_id,
-            "timestamp": claim.get("timestamp"),
-            "claim_type": claim.get("claim_type", "PHOTO_IMAGE"),
-            "claim_description": claim.get("claim_info", {}).get("description", "")[:100],
-            "recommendation": decision.get("recommendation", "UNKNOWN"),
-            "fraud_score": fraud_analysis.get("overall_score", 0),
-            "damage_score": damage_assessment.get("damage_score", damage_assessment.get("score", 0))
-        })
-
     return {
-        "total": len(claims_list),
-        "claims": sorted(claims_list, key=lambda x: x["timestamp"], reverse=True)
+        "message": "Stateless inference engine: Query MongoDB via Node.js API for claim records",
+        "total": 0,
+        "claims": []
     }
 
 
@@ -333,20 +322,75 @@ async def list_claims():
 async def get_annotated_image(job_id: str):
     candidate_paths = [
         f"data/uploads/keyframes/{job_id}_keyframe_primary.jpg",
+        f"data/uploads/keyframes/{job_id}_primary.jpg",
+        f"data/uploads/keyframes/{job_id}_keyframe_secondary.jpg",
         f"data/uploads/annotated/{job_id}_annotated.jpg",
-        f"data/uploads/{job_id}_annotated.jpg"
+        f"data/uploads/{job_id}_annotated.jpg",
+        f"data/uploads/processed/{job_id}_processed.jpg",
+        f"data/uploads/{job_id}.jpg"
     ]
     for path in candidate_paths:
         if os.path.exists(path):
             return FileResponse(path, media_type="image/jpeg")
+
+    for search_dir in ["data/uploads/keyframes", "data/uploads/annotated", "data/uploads/processed", "data/uploads"]:
+        if os.path.exists(search_dir):
+            files = [
+                os.path.join(search_dir, f)
+                for f in os.listdir(search_dir)
+                if f.lower().endswith(('.jpg', '.jpeg', '.png', '.webp')) and not os.path.isdir(os.path.join(search_dir, f))
+            ]
+            if files:
+                files.sort(key=lambda p: os.path.getmtime(p), reverse=True)
+                return FileResponse(files[0], media_type="image/jpeg")
 
     raise HTTPException(status_code=404, detail="Annotated image not found")
 
 
 @router.get("/api/annotated-keyframe/{job_id}")
 async def get_annotated_keyframe(job_id: str, frame_type: str = "primary"):
-    filename = f"{job_id}_keyframe_{frame_type}.jpg"
-    path = os.path.join("data/uploads/keyframes", filename)
-    if not os.path.exists(path):
-        raise HTTPException(status_code=404, detail=f"Annotated keyframe ({frame_type}) not found")
-    return FileResponse(path, media_type="image/jpeg")
+    candidate_paths = [
+        f"data/uploads/keyframes/{job_id}_keyframe_{frame_type}.jpg",
+        f"data/uploads/keyframes/{job_id}_{frame_type}.jpg",
+        f"data/uploads/{job_id}_keyframe_{frame_type}.jpg",
+        f"data/uploads/{job_id}_{frame_type}.jpg",
+        f"data/uploads/annotated/{job_id}_annotated.jpg",
+        f"data/uploads/{job_id}_annotated.jpg",
+        f"data/uploads/processed/{job_id}_processed.jpg"
+    ]
+    for path in candidate_paths:
+        if os.path.exists(path):
+            return FileResponse(path, media_type="image/jpeg")
+
+    keyframe_dir = "data/uploads/keyframes"
+    if os.path.exists(keyframe_dir):
+        matching_files = [
+            os.path.join(keyframe_dir, f)
+            for f in os.listdir(keyframe_dir)
+            if f.lower().endswith(f"_{frame_type}.jpg") or f.lower().endswith(f"_{frame_type}.jpeg") or f.lower().endswith(f"_{frame_type}.png")
+        ]
+        if matching_files:
+            matching_files.sort(key=lambda p: os.path.getmtime(p), reverse=True)
+            return FileResponse(matching_files[0], media_type="image/jpeg")
+
+        all_keyframe_files = [
+            os.path.join(keyframe_dir, f)
+            for f in os.listdir(keyframe_dir)
+            if f.lower().endswith(('.jpg', '.jpeg', '.png', '.webp')) and not os.path.isdir(os.path.join(keyframe_dir, f))
+        ]
+        if all_keyframe_files:
+            all_keyframe_files.sort(key=lambda p: os.path.getmtime(p), reverse=True)
+            return FileResponse(all_keyframe_files[0], media_type="image/jpeg")
+
+    for search_dir in ["data/uploads/annotated", "data/uploads/processed", "data/uploads"]:
+        if os.path.exists(search_dir):
+            files = [
+                os.path.join(search_dir, f)
+                for f in os.listdir(search_dir)
+                if f.lower().endswith(('.jpg', '.jpeg', '.png', '.webp')) and not os.path.isdir(os.path.join(search_dir, f))
+            ]
+            if files:
+                files.sort(key=lambda p: os.path.getmtime(p), reverse=True)
+                return FileResponse(files[0], media_type="image/jpeg")
+
+    raise HTTPException(status_code=404, detail=f"Annotated keyframe ({frame_type}) not found")

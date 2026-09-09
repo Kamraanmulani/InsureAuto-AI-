@@ -8,8 +8,8 @@ InsureAuto AI is an insurance claims operations platform that combines computer 
 
 ## Key Capabilities
 
-- **Walk-Around Video Inspection**: Automated frame extraction, motion blur rejection, damage salience ranking, and primary/secondary angle selection.
-- **Physical Damage Quantification**: YOLOv10 object detection localizing vehicle components and damaged regions with bounding boxes.
+- **Walk-Around Video Inspection**: Automated frame extraction, motion blur rejection, vehicle salience ranking, and primary/secondary angle selection.
+- **Vehicle Localization & ROI Extraction**: YOLOv10 object detection localizing vehicle presence, bounding boxes, and region-of-interest extraction for downstream assessment.
 - **Vision-Language Reasoning**: LLaVA multi-modal inference providing damage severity grading and repair vs. replacement analysis.
 - **Anti-Fraud & Integrity Verification**:
   - Perceptual image and video hashing to detect recycled claims and mirrored footage.
@@ -20,7 +20,7 @@ InsureAuto AI is an insurance claims operations platform that combines computer 
   - Claims operational queue with triage tabs (Needs Review, High Risk, Processing, Approved, Rejected, Closed).
   - Two-column investigation workspace with high-resolution evidence viewers and salience timelines.
   - Human decision workflow (Approve, Request Information, Reject, and Manual Override with mandatory audit justification).
-  - Customer directory, policy registry, and honest operational reports (no fabricated metrics).
+  - Customer directory, policy registry, and operational reports.
   - Isolated administrative system health diagnostics.
 
 ---
@@ -53,7 +53,7 @@ InsureAuto AI is an insurance claims operations platform that combines computer 
                                       v                     v                     v
                                +-------------+       +-------------+       +-------------+
                                |   YOLOv10   |       |  LLaVA VLM  |       | Anti-Fraud  |
-                               |  Detections |       |  Reasoning  |       |  & Hashing  |
+                               | Vehicle ROI |       | Damage Eval |       |  & Hashing  |
                                +-------------+       +-------------+       +-------------+
 ```
 

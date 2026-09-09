@@ -9,7 +9,7 @@ parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
-from app.api.routes import router, claims_db
+from app.api.routes import router
 
 load_dotenv()
 

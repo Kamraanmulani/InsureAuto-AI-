@@ -2,7 +2,7 @@ from app.utils.image_utils import ImageProcessor
 from app.services.metadata_extractor import MetadataExtractor
 import os
 import uuid
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import shutil
 
 class PreprocessingService:
@@ -18,11 +18,12 @@ class PreprocessingService:
     async def process_claim_image(self, 
                                   image_path: str, 
                                   claim_date: str,
-                                  claim_description: str) -> Dict[str, Any]:
+                                  claim_description: str,
+                                  custom_job_id: Optional[str] = None) -> Dict[str, Any]:
         """Complete preprocessing pipeline for a claim image"""
         
-        # Generate unique ID for this processing job
-        job_id = str(uuid.uuid4())
+        # Generate or use provided unique ID for this processing job
+        job_id = custom_job_id if custom_job_id and custom_job_id.strip() else str(uuid.uuid4())
         
         # Step 1: Extract metadata
         metadata = self.metadata_extractor.extract_metadata(image_path)

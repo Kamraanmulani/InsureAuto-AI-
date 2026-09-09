@@ -301,43 +301,69 @@ const ClaimDetail = () => {
     })) : [])
   ];
 
-  const damageSeverity = damage.severity || (damageScore >= 7.5 ? 'Severe' : damageScore >= 4 ? 'Moderate' : 'Minor');
-  const damageWhatItMeans = damageScore < 4
+  const isDamageModelUnavailable = damage.available === false || damage.status === 'MODEL_UNAVAILABLE';
+  const damageSeverity = isDamageModelUnavailable
+    ? 'Dedicated Model Unavailable'
+    : (damage.severity || (damageScore >= 7.5 ? 'Severe' : damageScore >= 4 ? 'Moderate' : 'Minor'));
+
+  const damageWhatItMeans = isDamageModelUnavailable
+    ? 'Vehicle detected. Dedicated damage model unavailable. Physical damage is not derived from vehicle detection confidence. Manual adjuster review required.'
+    : damageScore < 4
     ? 'Superficial exterior or localized panel damage. Eligible for standard body shop repair estimate without major structural teardown.'
     : damageScore >= 7.5
     ? 'Severe structural or multi-panel crumple. High likelihood of structural deformation or total loss threshold evaluation.'
     : 'Substantial body or bumper damage. Involves component replacement or realignment requiring professional estimator review.';
 
-  const damageReasons = [
-    damage.damagedParts && damage.damagedParts.length > 0
-      ? {
-          text: `Identified damage localized to: ${damage.damagedParts.join(', ')}`,
-          evidenceType: 'Visual Inspection Frame',
-          isFlag: false
-        }
-      : {
-          text: 'No primary structural panel failure localized in inspection frame',
-          evidenceType: 'Visual Inspection Frame',
+  const damageReasons = isDamageModelUnavailable
+    ? [
+        {
+          text: 'Vehicle detected. Dedicated damage model unavailable.',
+          evidenceType: 'Model Architecture Guardrail',
           isFlag: false
         },
-    {
-      text: `Recommended repair path: ${damage.recommendation || 'Standard Body Repair & Alignment'}`,
-      evidenceType: 'Damage Classification Engine',
-      isFlag: false
-    },
-    damage.description
-      ? {
-          text: `Observed impact: ${damage.description}`,
-          evidenceType: 'Visual Evidence Analysis',
+        damage.description
+          ? {
+              text: damage.description,
+              evidenceType: 'Claimant Narrative (Triage)',
+              isFlag: false
+            }
+          : null,
+        {
+          text: `Vehicle localized and verified against policy (${vehicle.year} ${vehicle.make} ${vehicle.model}, Plate ${vehicle.registration})`,
+          evidenceType: 'Policy Vehicle Reference',
           isFlag: false
         }
-      : null,
-    {
-      text: `Vehicle profile verified against policy (${vehicle.year} ${vehicle.make} ${vehicle.model}, Plate ${vehicle.registration})`,
-      evidenceType: 'Policy Vehicle Reference',
-      isFlag: false
-    }
-  ].filter(Boolean);
+      ].filter(Boolean)
+    : [
+        damage.damagedParts && damage.damagedParts.length > 0
+          ? {
+              text: `Identified damage localized to: ${damage.damagedParts.join(', ')}`,
+              evidenceType: 'Visual Inspection Frame',
+              isFlag: false
+            }
+          : {
+              text: 'No primary structural panel failure localized in inspection frame',
+              evidenceType: 'Visual Inspection Frame',
+              isFlag: false
+            },
+        {
+          text: `Recommended repair path: ${damage.recommendation || 'Standard Body Repair & Alignment'}`,
+          evidenceType: 'Damage Classification Engine',
+          isFlag: false
+        },
+        damage.description
+          ? {
+              text: `Observed impact: ${damage.description}`,
+              evidenceType: 'Visual Evidence Analysis',
+              isFlag: false
+            }
+          : null,
+        {
+          text: `Vehicle profile verified against policy (${vehicle.year} ${vehicle.make} ${vehicle.model}, Plate ${vehicle.registration})`,
+          evidenceType: 'Policy Vehicle Reference',
+          isFlag: false
+        }
+      ].filter(Boolean);
 
   const consistencyRating = consistencyScore >= 7 ? 'High Consistency' : consistencyScore >= 4 ? 'Moderate Alignment' : 'Inconsistent';
   const consistencyWhatItMeans = consistencyScore >= 7
@@ -914,7 +940,9 @@ const ClaimDetail = () => {
                     </div>
                     <div className="flex items-center gap-2">
                       <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${
-                        damageScore >= 7.5
+                        isDamageModelUnavailable
+                          ? 'bg-slate-100 text-slate-700 border border-slate-300'
+                          : damageScore >= 7.5
                           ? 'bg-rose-100 text-rose-800 border border-rose-200'
                           : damageScore >= 4
                           ? 'bg-amber-100 text-amber-800 border border-amber-200'
@@ -923,7 +951,7 @@ const ClaimDetail = () => {
                         {damageSeverity}
                       </span>
                       <span className="text-xs font-bold text-slate-900 font-mono">
-                        {damageScore.toFixed(1)} / 10
+                        {isDamageModelUnavailable ? 'Unassessed' : `${damageScore.toFixed(1)} / 10`}
                       </span>
                     </div>
                   </div>
@@ -931,9 +959,9 @@ const ClaimDetail = () => {
                   <div className="w-full bg-slate-200 rounded h-1.5 overflow-hidden">
                     <div
                       className={`h-1.5 rounded ${
-                        damageScore >= 7.5 ? 'bg-rose-600' : damageScore >= 4 ? 'bg-amber-500' : 'bg-blue-600'
+                        isDamageModelUnavailable ? 'bg-slate-400' : damageScore >= 7.5 ? 'bg-rose-600' : damageScore >= 4 ? 'bg-amber-500' : 'bg-blue-600'
                       }`}
-                      style={{ width: `${Math.min(100, damageScore * 10)}%` }}
+                      style={{ width: `${isDamageModelUnavailable ? 0 : Math.min(100, damageScore * 10)}%` }}
                     />
                   </div>
 
@@ -1339,21 +1367,21 @@ const ClaimDetail = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="p-3 bg-white rounded border border-slate-200 space-y-2">
                     <div className="font-semibold text-slate-800 text-[11px] uppercase tracking-wider flex items-center gap-1.5">
-                      <Camera size={13} className="text-slate-500" /> YOLO Localization Diagnostics
+                      <Camera size={13} className="text-slate-500" /> YOLO Vehicle Localization
                     </div>
                     <div className="space-y-1 text-slate-600 text-[11px]">
                       <div className="flex justify-between">
-                        <span>Object Detections:</span>
+                        <span>Vehicle Detections:</span>
                         <span className="font-mono text-slate-900">{yoloAggregate.totalKeyframeDetections || (damage.damagedParts?.length || 1)} detected</span>
                       </div>
                       <div className="flex justify-between">
-                        <span>Detection Confidence:</span>
+                        <span>Localization Confidence:</span>
                         <span className="font-mono text-slate-900">
                           {yoloAggregate.meanConfidence ? `${(yoloAggregate.meanConfidence * 100).toFixed(1)}%` : 'Validated'}
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span>Damage Area Ratio:</span>
+                        <span>Vehicle Frame Coverage:</span>
                         <span className="font-mono text-slate-900">
                           {yoloAggregate.aggregateDamageAreaRatio !== undefined
                             ? `${(yoloAggregate.aggregateDamageAreaRatio * 100).toFixed(1)}%`
@@ -1362,7 +1390,7 @@ const ClaimDetail = () => {
                       </div>
                       <div className="flex justify-between">
                         <span>Primary Vehicle Status:</span>
-                        <span className="font-mono text-emerald-700 font-medium">Verified in frame</span>
+                        <span className="font-mono text-emerald-700 font-medium">Localized in frame</span>
                       </div>
                     </div>
                   </div>
