@@ -1,9 +1,10 @@
 const axios = require('axios');
 const FormData = require('form-data');
 const fs = require('fs');
+const config = require('../config/env');
 
 const forwardToML = async (filePath, originalName, isVideo, payload) => {
-  const mlApiBase = process.env.ML_API_URL || 'http://localhost:8000';
+  const mlApiBase = config.mlApiUrl;
   const endpoint = isVideo
     ? `${mlApiBase}/api/analyze-claim-video`
     : `${mlApiBase}/api/analyze-claim`;

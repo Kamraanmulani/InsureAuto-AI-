@@ -6,9 +6,10 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "test": "node test/auth.test.js && node test/lifecycle.test.js",
+    "test": "node test/auth.test.js && node test/lifecycle.test.js && node test/architecture.test.js",
     "test:auth": "node test/auth.test.js",
-    "test:lifecycle": "node test/lifecycle.test.js"
+    "test:lifecycle": "node test/lifecycle.test.js",
+    "test:arch": "node test/architecture.test.js"
   },
   "keywords": ["insurance", "claims", "api", "ml"],
   "author": "",

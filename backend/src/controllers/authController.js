@@ -1,189 +1,61 @@
-const jwt = require('jsonwebtoken');
-const User = require('../models/User');
+const authService = require('../services/authService');
+const { sendSuccess } = require('../utils/apiResponse');
 
-const register = async (req, res) => {
+const register = async (req, res, next) => {
   try {
     const { email, password, name } = req.body;
-
-    if (!email || !password || !name) {
-      return res.status(400).json({ error: 'Name, email, and password are required' });
-    }
-
-    if (password.length < 6) {
-      return res.status(400).json({ error: 'Password must be at least 6 characters' });
-    }
-
-    const existingUser = await User.findOne({ email: email.toLowerCase() });
-    if (existingUser) {
-      return res.status(400).json({ error: 'User already exists' });
-    }
-
-    const user = new User({
-      email: email.toLowerCase(),
-      password,
-      name: name.trim(),
-      role: 'ASSESSOR'
-    });
-
-    await user.save();
-
-    const token = jwt.sign(
-      { userId: user._id, role: user.role },
-      process.env.JWT_SECRET || 'claim-sight-default-secret',
-      { expiresIn: '24h' }
-    );
-
-    res.status(201).json({
-      success: true,
-      token,
-      user: {
-        id: user._id,
-        email: user.email,
-        name: user.name,
-        role: user.role
-      }
-    });
+    const result = await authService.register({ email, password, name });
+    return sendSuccess(res, 201, result, 'Registration successful');
   } catch (error) {
-    res.status(500).json({ error: 'Registration failed' });
+    next(error);
   }
 };
 
-const login = async (req, res) => {
+const login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
-
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
-    }
-
-    const user = await User.findOne({ email: email.toLowerCase() });
-    if (!user || !user.isActive) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-
-    const isValidPassword = await user.comparePassword(password);
-    if (!isValidPassword) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-
-    const token = jwt.sign(
-      { userId: user._id, role: user.role },
-      process.env.JWT_SECRET || 'claim-sight-default-secret',
-      { expiresIn: '24h' }
-    );
-
-    res.json({
-      success: true,
-      token,
-      user: {
-        id: user._id,
-        email: user.email,
-        name: user.name,
-        role: user.role
-      }
-    });
+    const result = await authService.login({ email, password });
+    return sendSuccess(res, 200, result, 'Login successful');
   } catch (error) {
-    res.status(500).json({ error: 'Login failed' });
+    next(error);
   }
 };
 
-const getMe = async (req, res) => {
+const getMe = async (req, res, next) => {
   try {
-    const user = await User.findById(req.user.userId);
-    if (!user || !user.isActive) {
-      return res.status(401).json({ error: 'User not found or inactive' });
-    }
-    res.json({
-      success: true,
-      user: {
-        id: user._id,
-        email: user.email,
-        name: user.name,
-        role: user.role
-      }
-    });
+    const user = await authService.getMe(req.user.userId);
+    return sendSuccess(res, 200, { user });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to retrieve current user' });
+    next(error);
   }
 };
 
-const listUsers = async (req, res) => {
+const listUsers = async (req, res, next) => {
   try {
-    const users = await User.find({}).sort({ createdAt: -1 });
-    res.json({
-      success: true,
-      users
-    });
+    const users = await authService.listUsers();
+    return sendSuccess(res, 200, { users });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to list users' });
+    next(error);
   }
 };
 
-const updateUserRole = async (req, res) => {
+const updateUserRole = async (req, res, next) => {
   try {
     const { role, isActive } = req.body;
-    const targetUserId = req.params.id;
-
-    const targetUser = await User.findById(targetUserId);
-    if (!targetUser) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    if (role) {
-      if (!['ADMIN', 'ASSESSOR'].includes(role)) {
-        return res.status(400).json({ error: 'Invalid role' });
-      }
-      targetUser.role = role;
-    }
-
-    if (typeof isActive === 'boolean') {
-      targetUser.isActive = isActive;
-    }
-
-    await targetUser.save();
-
-    res.json({
-      success: true,
-      user: targetUser
-    });
+    const updatedUser = await authService.updateUserRole(req.params.id, { role, isActive });
+    return sendSuccess(res, 200, { user: updatedUser }, 'User updated successfully');
   } catch (error) {
-    res.status(500).json({ error: 'Failed to update user' });
+    next(error);
   }
 };
 
-const createAdminUser = async (req, res) => {
+const createAdminUser = async (req, res, next) => {
   try {
     const { email, password, name } = req.body;
-
-    if (!email || !password || !name) {
-      return res.status(400).json({ error: 'Name, email, and password are required' });
-    }
-
-    const existingUser = await User.findOne({ email: email.toLowerCase() });
-    if (existingUser) {
-      return res.status(400).json({ error: 'User already exists' });
-    }
-
-    const user = new User({
-      email: email.toLowerCase(),
-      password,
-      name: name.trim(),
-      role: 'ADMIN'
-    });
-
-    await user.save();
-
-    res.status(201).json({
-      success: true,
-      user: {
-        id: user._id,
-        email: user.email,
-        name: user.name,
-        role: user.role
-      }
-    });
+    const result = await authService.createAdminUser({ email, password, name });
+    return sendSuccess(res, 201, result, 'Admin created successfully');
   } catch (error) {
-    res.status(500).json({ error: 'Failed to create admin user' });
+    next(error);
   }
 };
 
