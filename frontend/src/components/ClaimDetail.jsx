@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { ChevronDown, ChevronUp, Car, AlertTriangle, ShieldCheck, User, Layers } from 'lucide-react';
+import { ChevronDown, ChevronUp, Car, AlertTriangle, ShieldCheck, User, Layers, RefreshCw } from 'lucide-react';
 import { claimAPI } from '../services/api';
 import { CLAIM_STATUS, formatClaimId } from '../types/claim';
 
@@ -13,6 +13,7 @@ const ClaimDetail = () => {
   const [activeFrameType, setActiveFrameType] = useState('primary');
   const [showTechnicalAnalysis, setShowTechnicalAnalysis] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const [showOverrideDialog, setShowOverrideDialog] = useState(false);
   const [overrideData, setOverrideData] = useState({
     newRecommendation: '',
@@ -37,6 +38,47 @@ const ClaimDetail = () => {
   useEffect(() => {
     loadClaim();
   }, [loadClaim]);
+
+  useEffect(() => {
+    if (!claim || claim.status !== CLAIM_STATUS.PROCESSING || claim.processingError?.message) {
+      return;
+    }
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await claimAPI.getClaim(jobId);
+        if (res?.claim) {
+          setClaim(res.claim);
+          if (res.claim.status !== CLAIM_STATUS.PROCESSING || res.claim.processingError?.message) {
+            clearInterval(interval);
+          }
+        }
+      } catch (err) {
+        clearInterval(interval);
+      }
+    }, 2500);
+
+    return () => clearInterval(interval);
+  }, [claim, jobId]);
+
+  const handleRetryProcessing = async () => {
+    try {
+      setRetrying(true);
+      const res = await claimAPI.retryProcessing(claim?.claimId || claim?.jobId || jobId);
+      toast.success('Analysis reprocessing initiated.');
+      if (res?.claim) {
+        setClaim(res.claim);
+      } else {
+        await loadClaim();
+      }
+    } catch (error) {
+      console.error(error);
+      const msg = error.response?.data?.error || 'Failed to retry claim processing.';
+      toast.error(msg);
+    } finally {
+      setRetrying(false);
+    }
+  };
 
   const handleDecisionAction = async (targetStatus, notes = '') => {
     try {
@@ -176,6 +218,8 @@ const ClaimDetail = () => {
   const decision = claim.decision || { outcome: 'PENDING' };
   const auditHistory = claim.auditHistory || [];
   const claimCode = formatClaimId(claim);
+  const isProcessing = claim.status === CLAIM_STATUS.PROCESSING;
+  const hasProcessingError = !!claim.processingError?.message;
 
   const getDisplayImageUrl = () => {
     if (!isVideoClaim) {
@@ -257,6 +301,54 @@ const ClaimDetail = () => {
           </div>
         </div>
       </div>
+
+      {isProcessing && !hasProcessingError && (
+        <div className="bg-blue-50 border border-blue-200 rounded p-4 flex items-center justify-between text-xs text-blue-900">
+          <div className="flex items-center gap-3">
+            <RefreshCw className="animate-spin text-blue-600" size={18} />
+            <div>
+              <div className="font-semibold">AI Multi-Modal Analysis in Progress</div>
+              <p className="text-blue-700 text-[11px] mt-0.5">
+                YOLO keyframe detection, VLM damage classification, and fraud verification are processing asynchronously. This view updates automatically.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={loadClaim}
+            className="px-3 py-1.5 bg-white hover:bg-blue-100 text-blue-800 border border-blue-300 rounded text-xs font-medium transition"
+          >
+            Check Status
+          </button>
+        </div>
+      )}
+
+      {hasProcessingError && (
+        <div className="bg-rose-50 border border-rose-200 rounded p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs text-rose-900">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="text-rose-600 shrink-0 mt-0.5" size={18} />
+            <div>
+              <div className="font-semibold">ML Processing Failed</div>
+              <p className="text-rose-700 text-[11px] mt-0.5">
+                {claim.processingError.message}
+              </p>
+              {claim.processingError.retryCount > 0 && (
+                <span className="text-[10px] text-rose-500 mt-1 block">
+                  Attempts recorded: {claim.processingError.retryCount}
+                </span>
+              )}
+            </div>
+          </div>
+          <button
+            type="button"
+            disabled={retrying}
+            onClick={handleRetryProcessing}
+            className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-xs font-medium transition shrink-0 disabled:opacity-50"
+          >
+            {retrying ? 'Initiating Retry...' : 'Retry Processing'}
+          </button>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         <div className="lg:col-span-7 space-y-6">
@@ -355,7 +447,13 @@ const ClaimDetail = () => {
                     <span className="font-semibold text-slate-800 font-mono">
                       {item.type || 'PHOTO'} Evidence #{idx + 1}
                     </span>
-                    <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-200 text-slate-700">
+                    <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                      item.processingStatus === 'COMPLETED'
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : item.processingStatus === 'FAILED'
+                        ? 'bg-rose-100 text-rose-800'
+                        : 'bg-blue-100 text-blue-800'
+                    }`}>
                       {item.processingStatus || 'COMPLETED'}
                     </span>
                   </div>
@@ -367,6 +465,11 @@ const ClaimDetail = () => {
                     <span className="text-slate-400">Timestamp:</span>
                     <span className="text-slate-700">{item.uploadTimestamp ? new Date(item.uploadTimestamp).toLocaleString() : 'N/A'}</span>
                   </div>
+                  {item.error && (
+                    <div className="text-rose-600 text-[11px] pt-1">
+                      Error: {item.error}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -512,79 +615,89 @@ const ClaimDetail = () => {
               <p className="text-xs text-slate-500">Autonomous evaluation decoupled from claim settlement state.</p>
             </div>
 
-            <div className={`p-4 rounded border ${
-              aiRecommendation === 'APPROVE'
-                ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                : aiRecommendation === 'REJECT'
-                ? 'bg-rose-50 border-rose-200 text-rose-900'
-                : 'bg-amber-50 border-amber-200 text-amber-900'
-            }`}>
-              <div className="flex items-center justify-between font-semibold text-xs mb-1">
-                <span>AI Recommendation: {aiRecommendation}</span>
-                <span className="uppercase text-[10px] tracking-wider opacity-90">{aiConfidence} Confidence</span>
+            {isProcessing && !claim.aiAssessment?.scores?.damage ? (
+              <div className="p-4 rounded border bg-slate-50 border-slate-200 text-slate-600 text-xs text-center space-y-2">
+                <RefreshCw className="animate-spin mx-auto text-slate-400" size={20} />
+                <p className="font-medium text-slate-800">Assessment In Progress</p>
+                <p className="text-[11px] text-slate-500">Full model breakdown will appear once inference completes.</p>
               </div>
-              <p className="text-xs mt-2 leading-relaxed opacity-95">
-                {aiExplanation || 'Multi-modal analysis complete.'}
-              </p>
-            </div>
+            ) : (
+              <>
+                <div className={`p-4 rounded border ${
+                  aiRecommendation === 'APPROVE'
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                    : aiRecommendation === 'REJECT'
+                    ? 'bg-rose-50 border-rose-200 text-rose-900'
+                    : 'bg-amber-50 border-amber-200 text-amber-900'
+                }`}>
+                  <div className="flex items-center justify-between font-semibold text-xs mb-1">
+                    <span>AI Recommendation: {aiRecommendation}</span>
+                    <span className="uppercase text-[10px] tracking-wider opacity-90">{aiConfidence} Confidence</span>
+                  </div>
+                  <p className="text-xs mt-2 leading-relaxed opacity-95">
+                    {aiExplanation || 'Multi-modal analysis complete.'}
+                  </p>
+                </div>
 
-            <div className="space-y-3 pt-2 text-xs">
-              <div>
-                <div className="flex justify-between text-slate-700 font-medium mb-1">
-                  <span>Damage Score</span>
-                  <span className="font-semibold text-slate-900">{(scores.damage || 0).toFixed(1)} / 10</span>
-                </div>
-                <div className="w-full bg-slate-100 rounded h-1.5 overflow-hidden">
-                  <div className="bg-blue-600 h-1.5 rounded" style={{ width: `${Math.min(100, (scores.damage || 0) * 10)}%` }} />
-                </div>
-                <div className="flex justify-between text-[11px] text-slate-500 mt-1">
-                  <span>Severity: {damage.severity || 'Moderate'}</span>
-                  <span>{damage.recommendation || 'Standard Repair'}</span>
-                </div>
-              </div>
+                <div className="space-y-3 pt-2 text-xs">
+                  <div>
+                    <div className="flex justify-between text-slate-700 font-medium mb-1">
+                      <span>Damage Score</span>
+                      <span className="font-semibold text-slate-900">{(scores.damage || 0).toFixed(1)} / 10</span>
+                    </div>
+                    <div className="w-full bg-slate-100 rounded h-1.5 overflow-hidden">
+                      <div className="bg-blue-600 h-1.5 rounded" style={{ width: `${Math.min(100, (scores.damage || 0) * 10)}%` }} />
+                    </div>
+                    <div className="flex justify-between text-[11px] text-slate-500 mt-1">
+                      <span>Severity: {damage.severity || 'Moderate'}</span>
+                      <span>{damage.recommendation || 'Standard Repair'}</span>
+                    </div>
+                  </div>
 
-              <div>
-                <div className="flex justify-between text-slate-700 font-medium mb-1">
-                  <span>Fraud & Tampering Risk</span>
-                  <span className="font-semibold text-slate-900">{(scores.fraud || 0).toFixed(1)} / 10</span>
-                </div>
-                <div className="w-full bg-slate-100 rounded h-1.5 overflow-hidden">
-                  <div
-                    className={`h-1.5 rounded ${(scores.fraud || 0) >= 7 ? 'bg-rose-600' : (scores.fraud || 0) >= 4 ? 'bg-amber-500' : 'bg-emerald-600'}`}
-                    style={{ width: `${Math.min(100, (scores.fraud || 0) * 10)}%` }}
-                  />
-                </div>
-                <div className="flex justify-between text-[11px] text-slate-500 mt-1">
-                  <span>Duplicate: {fraud.isDuplicate ? 'Duplicate Detected' : 'Unique signature'}</span>
-                  <span>Metadata: {metaFraud.editingSoftwareDetected ? 'Edited' : 'Clean'}</span>
-                </div>
-              </div>
+                  <div>
+                    <div className="flex justify-between text-slate-700 font-medium mb-1">
+                      <span>Fraud & Tampering Risk</span>
+                      <span className="font-semibold text-slate-900">{(scores.fraud || 0).toFixed(1)} / 10</span>
+                    </div>
+                    <div className="w-full bg-slate-100 rounded h-1.5 overflow-hidden">
+                      <div
+                        className={`h-1.5 rounded ${(scores.fraud || 0) >= 7 ? 'bg-rose-600' : (scores.fraud || 0) >= 4 ? 'bg-amber-500' : 'bg-emerald-600'}`}
+                        style={{ width: `${Math.min(100, (scores.fraud || 0) * 10)}%` }}
+                      />
+                    </div>
+                    <div className="flex justify-between text-[11px] text-slate-500 mt-1">
+                      <span>Duplicate: {fraud.isDuplicate ? 'Duplicate Detected' : 'Unique signature'}</span>
+                      <span>Metadata: {metaFraud.editingSoftwareDetected ? 'Edited' : 'Clean'}</span>
+                    </div>
+                  </div>
 
-              <div>
-                <div className="flex justify-between text-slate-700 font-medium mb-1">
-                  <span>Narrative vs Visual Consistency</span>
-                  <span className="font-semibold text-slate-900">{(scores.consistency || 0).toFixed(1)} / 10</span>
+                  <div>
+                    <div className="flex justify-between text-slate-700 font-medium mb-1">
+                      <span>Narrative vs Visual Consistency</span>
+                      <span className="font-semibold text-slate-900">{(scores.consistency || 0).toFixed(1)} / 10</span>
+                    </div>
+                    <div className="w-full bg-slate-100 rounded h-1.5 overflow-hidden">
+                      <div
+                        className={`h-1.5 rounded ${(scores.consistency || 0) >= 7 ? 'bg-emerald-600' : (scores.consistency || 0) >= 4 ? 'bg-amber-500' : 'bg-rose-600'}`}
+                        style={{ width: `${Math.min(100, (scores.consistency || 0) * 10)}%` }}
+                      />
+                    </div>
+                  </div>
                 </div>
-                <div className="w-full bg-slate-100 rounded h-1.5 overflow-hidden">
-                  <div
-                    className={`h-1.5 rounded ${(scores.consistency || 0) >= 7 ? 'bg-emerald-600' : (scores.consistency || 0) >= 4 ? 'bg-amber-500' : 'bg-rose-600'}`}
-                    style={{ width: `${Math.min(100, (scores.consistency || 0) * 10)}%` }}
-                  />
-                </div>
-              </div>
-            </div>
 
-            {damage.damagedParts && damage.damagedParts.length > 0 && (
-              <div className="pt-2 border-t border-slate-100">
-                <div className="text-xs font-semibold text-slate-700 mb-1.5">Identified Damage Regions</div>
-                <div className="flex flex-wrap gap-1.5">
-                  {damage.damagedParts.map((part, idx) => (
-                    <span key={idx} className="px-2 py-0.5 bg-slate-100 border border-slate-200 text-slate-700 rounded text-[11px]">
-                      {part}
-                    </span>
-                  ))}
-                </div>
-              </div>
+                {damage.damagedParts && damage.damagedParts.length > 0 && (
+                  <div className="pt-2 border-t border-slate-100">
+                    <div className="text-xs font-semibold text-slate-700 mb-1.5">Identified Damage Regions</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {damage.damagedParts.map((part, idx) => (
+                        <span key={idx} className="px-2 py-0.5 bg-slate-100 border border-slate-200 text-slate-700 rounded text-[11px]">
+                          {part}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
 
@@ -674,35 +787,51 @@ const ClaimDetail = () => {
                 )}
 
                 {claim.status === CLAIM_STATUS.PROCESSING && (
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-2">
+                    {hasProcessingError ? (
+                      <button
+                        type="button"
+                        disabled={retrying}
+                        onClick={handleRetryProcessing}
+                        className="w-full py-2 px-3 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-xs font-medium rounded transition"
+                      >
+                        {retrying ? 'Retrying...' : 'Retry Processing Pipeline'}
+                      </button>
+                    ) : (
+                      <div className="p-2.5 bg-slate-50 rounded border border-slate-200 text-center text-xs text-slate-500">
+                        Analysis currently running. Actions will enable once AI assessment completes.
+                      </div>
+                    )}
                     <button
                       type="button"
                       disabled={actionLoading}
-                      onClick={() => handleDecisionAction(CLAIM_STATUS.AI_ASSESSED, 'AI evaluation models finished')}
-                      className="py-2 px-3 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-medium rounded transition"
+                      onClick={() => handleDecisionAction(CLAIM_STATUS.CLOSED, 'Processing abandoned and claim closed')}
+                      className="w-full py-1.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium rounded transition border border-slate-200"
                     >
-                      Mark AI Assessed
-                    </button>
-                    <button
-                      type="button"
-                      disabled={actionLoading}
-                      onClick={() => handleDecisionAction(CLAIM_STATUS.PENDING_REVIEW, 'Moved directly to review queue')}
-                      className="py-2 px-3 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-xs font-medium rounded transition"
-                    >
-                      Queue for Review
+                      Cancel & Close Claim
                     </button>
                   </div>
                 )}
 
                 {claim.status === CLAIM_STATUS.AI_ASSESSED && (
-                  <button
-                    type="button"
-                    disabled={actionLoading}
-                    onClick={() => handleDecisionAction(CLAIM_STATUS.PENDING_REVIEW, 'Queued for human assessment')}
-                    className="w-full py-2 px-3 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-xs font-medium rounded transition"
-                  >
-                    Move to Assessor Queue (Pending Review)
-                  </button>
+                  <div className="space-y-2">
+                    <button
+                      type="button"
+                      disabled={actionLoading}
+                      onClick={() => handleDecisionAction(CLAIM_STATUS.PENDING_REVIEW, 'Moved to assessor inspection queue')}
+                      className="w-full py-2 px-3 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-xs font-medium rounded transition"
+                    >
+                      Queue for Assessor Review
+                    </button>
+                    <button
+                      type="button"
+                      disabled={actionLoading}
+                      onClick={() => handleDecisionAction(CLAIM_STATUS.UNDER_REVIEW, 'Assessor took immediate ownership of claim')}
+                      className="w-full py-2 px-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-medium rounded transition"
+                    >
+                      Review Immediately (Under Review)
+                    </button>
+                  </div>
                 )}
 
                 {['PENDING_REVIEW', 'NEEDS_INFORMATION'].includes(claim.status) && (

@@ -2,105 +2,52 @@ const fs = require('fs');
 const Claim = require('../models/Claim');
 const { CLAIM_STATUS } = require('../models/Claim');
 const ApiError = require('../utils/apiError');
-const { forwardToML } = require('./mlService');
+const mlService = require('./mlService');
 const { isVideoFile } = require('../middleware/uploadMiddleware');
 
-const analyzeAndCreateClaim = async ({ uploadedFile, claimData, user }) => {
-  if (!uploadedFile) {
-    throw ApiError.badRequest('Photo or walk-around video file is required');
-  }
-
-  const isVideo = isVideoFile(uploadedFile);
-
-  let mlResult;
+const processClaimJob = async (identifier) => {
+  let claim;
   try {
-    mlResult = await forwardToML(uploadedFile.path, uploadedFile.originalname, isVideo, {
-      claim_date: claimData.claim_date,
-      claim_description: claimData.claim_description,
-      claim_location: claimData.claim_location,
-      policy_id: claimData.policy_id
+    claim = await Claim.findOne({
+      $or: [{ claimId: identifier }, { jobId: identifier }]
     });
-  } catch (mlError) {
-    if (uploadedFile && fs.existsSync(uploadedFile.path)) {
-      try { fs.unlinkSync(uploadedFile.path); } catch (e) {}
+
+    if (!claim) {
+      return null;
     }
-    const detailMsg = mlError.response?.data?.detail || mlError.message;
-    throw ApiError.serviceUnavailable(
-      'ML Backend is not available or analysis failed',
-      mlError.code === 'ECONNREFUSED' ? 'Connection refused - ML backend not running on port 8000' : detailMsg
-    );
-  }
 
-  if (uploadedFile && fs.existsSync(uploadedFile.path)) {
-    try { fs.unlinkSync(uploadedFile.path); } catch (e) {}
-  }
+    if (claim.status !== CLAIM_STATUS.PROCESSING && claim.status !== CLAIM_STATUS.SUBMITTED) {
+      return claim;
+    }
 
-  if (!mlResult || !mlResult.success) {
-    throw ApiError.internal('ML analysis did not complete successfully');
-  }
+    const evidenceItem = claim.evidence && claim.evidence.length > 0 ? claim.evidence[0] : null;
+    const filePath = evidenceItem?.rawFilePath || evidenceItem?.fileReference;
 
-  const report = mlResult.report || {};
-  const damageAssessment = report.damage_assessment || {};
-  const fraudAnalysis = report.fraud_analysis || {};
-  const consistencyAnalysis = report.consistency_analysis || {};
-  const decisionData = mlResult.decision || report.decision || {};
-  const videoEvidence = report.video_evidence || {};
+    if (!filePath || !fs.existsSync(filePath)) {
+      throw new Error(`Evidence media file not found on disk at path: ${filePath}`);
+    }
 
-  const claimId = mlResult.job_id.startsWith('CLM-')
-    ? mlResult.job_id
-    : `CLM-${mlResult.job_id.slice(0, 8).toUpperCase()}`;
+    const isVideo = claim.claimType === 'VIDEO_WALK_AROUND' || (evidenceItem && evidenceItem.type === 'VIDEO');
 
-  const actorId = user ? user.userId : 'INTAKE_SYSTEM';
-  const actorName = user ? user.name : 'Intake Gateway';
-  const actorRole = user ? user.role : 'SYSTEM';
+    const mlResult = await mlService.forwardToML(filePath, evidenceItem.originalName || 'media_file', isVideo, {
+      claim_date: claim.incident?.date,
+      claim_description: claim.incident?.description,
+      claim_location: claim.incident?.location,
+      policy_id: claim.policy?.policyNumber
+    });
 
-  const claim = new Claim({
-    claimId,
-    jobId: mlResult.job_id,
-    claimType: isVideo ? 'VIDEO_WALK_AROUND' : 'PHOTO_IMAGE',
-    status: CLAIM_STATUS.PENDING_REVIEW,
-    customer: {
-      customerId: `CUST-${(claimData.policy_id || '999').replace(/\D/g, '').slice(0, 4) || '101'}`,
-      name: claimData.customer_name || `Policyholder (${claimData.policy_id || 'Unassigned'})`,
-      email: claimData.customer_email || 'client@insureauto.ai',
-      phone: claimData.customer_phone || '+1 (555) 019-2831'
-    },
-    policy: {
-      policyNumber: claimData.policy_id || 'POL-UNASSIGNED',
-      policyType: 'Comprehensive Motor Policy',
-      coverageType: 'Full Collision & Comprehensive',
-      deductible: '$500',
-      effectiveDate: 'Jan 2026'
-    },
-    vehicle: {
-      registration: claimData.vehicle_registration || 'UNREGISTERED',
-      make: claimData.vehicle_make || (report.metadata?.vehicle_make || 'Standard'),
-      model: claimData.vehicle_model || (report.metadata?.vehicle_model || 'Vehicle'),
-      year: claimData.vehicle_year ? parseInt(claimData.vehicle_year, 10) : 2022,
-      vin: `1HGCR2F8${mlResult.job_id.slice(0, 8).toUpperCase()}`
-    },
-    incident: {
-      date: claimData.claim_date,
-      time: claimData.incident_time || '12:00 PM',
-      location: claimData.claim_location || 'Unknown Location',
-      incidentType: claimData.incident_type || 'Collision',
-      description: claimData.claim_description
-    },
-    evidence: [{
-      type: isVideo ? 'VIDEO' : 'PHOTO',
-      fileReference: mlResult.primary_annotated_keyframe_url || mlResult.annotated_image_url || uploadedFile.originalname,
-      originalName: uploadedFile.originalname,
-      uploadTimestamp: new Date(),
-      metadata: isVideo ? (report.metadata || {}) : (damageAssessment.metadata || {}),
-      processingStatus: 'COMPLETED',
-      analysisResults: {
-        keyframeRanking: mlResult.keyframe_timeline || videoEvidence.keyframe_timeline || [],
-        damageAssessment,
-        fraudAnalysis,
-        consistencyAnalysis
-      }
-    }],
-    aiAssessment: {
+    if (!mlResult || !mlResult.success) {
+      throw new Error('ML analysis pipeline returned unsuccessful response');
+    }
+
+    const report = mlResult.report || {};
+    const damageAssessment = report.damage_assessment || {};
+    const fraudAnalysis = report.fraud_analysis || {};
+    const consistencyAnalysis = report.consistency_analysis || {};
+    const decisionData = mlResult.decision || report.decision || {};
+    const videoEvidence = report.video_evidence || {};
+
+    claim.aiAssessment = {
       damageAssessment: {
         severity: damageAssessment.severity || 'Unknown',
         damagedParts: damageAssessment.damaged_parts || [],
@@ -157,6 +104,150 @@ const analyzeAndCreateClaim = async ({ uploadedFile, claimData, user }) => {
       } : undefined,
       primaryAnnotatedKeyframeUrl: mlResult.primary_annotated_keyframe_url,
       supportingEvidence: mlResult.keyframe_timeline || []
+    };
+
+    if (evidenceItem) {
+      evidenceItem.processingStatus = 'COMPLETED';
+      evidenceItem.error = null;
+      evidenceItem.fileReference = mlResult.primary_annotated_keyframe_url || mlResult.annotated_image_url || evidenceItem.fileReference;
+      evidenceItem.metadata = isVideo ? (report.metadata || {}) : (damageAssessment.metadata || {});
+      evidenceItem.analysisResults = {
+        keyframeRanking: mlResult.keyframe_timeline || videoEvidence.keyframe_timeline || [],
+        damageAssessment,
+        fraudAnalysis,
+        consistencyAnalysis
+      };
+    }
+
+    claim.annotatedImagePath = mlResult.annotated_image_url || mlResult.primary_annotated_keyframe_url;
+    claim.primaryAnnotatedKeyframeUrl = mlResult.primary_annotated_keyframe_url;
+    claim.keyframeSelection = isVideo ? {
+      primaryPath: videoEvidence.primary_annotated_keyframe_url || mlResult.primary_annotated_keyframe_url,
+      secondaryPath: videoEvidence.secondary_annotated_keyframe_url,
+      ranking: mlResult.keyframe_timeline || []
+    } : undefined;
+    claim.keyframeTimeline = mlResult.keyframe_timeline || [];
+
+    claim.processingError = {
+      message: null,
+      details: null,
+      timestamp: null,
+      retryCount: claim.processingError?.retryCount || 0
+    };
+
+    const previousStatus = claim.status;
+    claim.status = CLAIM_STATUS.AI_ASSESSED;
+
+    claim.auditHistory.push({
+      timestamp: new Date(),
+      action: 'AI_ASSESSMENT_COMPLETED',
+      actor: {
+        id: 'SYSTEM_ML',
+        name: 'InsureAuto AI Pipeline',
+        role: 'SYSTEM'
+      },
+      previousStatus,
+      newStatus: CLAIM_STATUS.AI_ASSESSED,
+      details: `Inference completed successfully. Recommendation: ${decisionData.recommendation || 'MANUAL_REVIEW'}`
+    });
+
+    await claim.save();
+    return claim;
+  } catch (error) {
+    if (claim) {
+      const errorMsg = error.response?.data?.detail || error.message || 'Processing failed';
+      const errorDetail = error.code === 'ECONNREFUSED' ? 'ML service connection refused on port 8000' : (error.response?.data || error.code || null);
+
+      if (claim.evidence && claim.evidence.length > 0) {
+        claim.evidence[0].processingStatus = 'FAILED';
+        claim.evidence[0].error = errorMsg;
+      }
+
+      claim.processingError = {
+        message: errorMsg,
+        details: errorDetail,
+        timestamp: new Date(),
+        retryCount: (claim.processingError?.retryCount || 0) + 1
+      };
+
+      claim.auditHistory.push({
+        timestamp: new Date(),
+        action: 'PROCESSING_FAILED',
+        actor: {
+          id: 'SYSTEM_ML',
+          name: 'InsureAuto AI Pipeline',
+          role: 'SYSTEM'
+        },
+        previousStatus: claim.status,
+        newStatus: claim.status,
+        details: errorMsg
+      });
+
+      await claim.save();
+    }
+    return null;
+  }
+};
+
+const createClaimAndDispatch = async ({ uploadedFile, claimData, user }) => {
+  if (!uploadedFile) {
+    throw ApiError.badRequest('Photo or walk-around video file is required');
+  }
+
+  const isVideo = isVideoFile(uploadedFile);
+  const rawJobId = `job-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 7)}`;
+  const claimId = `CLM-${rawJobId.slice(4).toUpperCase()}`;
+
+  const actorId = user ? user.userId : 'INTAKE_SYSTEM';
+  const actorName = user ? user.name : 'Intake Gateway';
+  const actorRole = user ? user.role : 'SYSTEM';
+
+  const claim = new Claim({
+    claimId,
+    jobId: rawJobId,
+    claimType: isVideo ? 'VIDEO_WALK_AROUND' : 'PHOTO_IMAGE',
+    status: CLAIM_STATUS.PROCESSING,
+    customer: {
+      customerId: `CUST-${(claimData.policy_id || '999').replace(/\D/g, '').slice(0, 4) || '101'}`,
+      name: claimData.customer_name || `Policyholder (${claimData.policy_id || 'Unassigned'})`,
+      email: claimData.customer_email || 'client@insureauto.ai',
+      phone: claimData.customer_phone || '+1 (555) 019-2831'
+    },
+    policy: {
+      policyNumber: claimData.policy_id || 'POL-UNASSIGNED',
+      policyType: 'Comprehensive Motor Policy',
+      coverageType: 'Full Collision & Comprehensive',
+      deductible: '$500',
+      effectiveDate: 'Jan 2026'
+    },
+    vehicle: {
+      registration: claimData.vehicle_registration || 'UNREGISTERED',
+      make: claimData.vehicle_make || 'Standard',
+      model: claimData.vehicle_model || 'Vehicle',
+      year: claimData.vehicle_year ? parseInt(claimData.vehicle_year, 10) : 2022,
+      vin: `1HGCR2F8${rawJobId.slice(0, 8).toUpperCase()}`
+    },
+    incident: {
+      date: claimData.claim_date,
+      time: claimData.incident_time || '12:00 PM',
+      location: claimData.claim_location || 'Unknown Location',
+      incidentType: claimData.incident_type || 'Collision',
+      description: claimData.claim_description
+    },
+    evidence: [{
+      type: isVideo ? 'VIDEO' : 'PHOTO',
+      fileReference: uploadedFile.path,
+      rawFilePath: uploadedFile.path,
+      originalName: uploadedFile.originalname,
+      uploadTimestamp: new Date(),
+      metadata: {},
+      processingStatus: 'PROCESSING',
+      analysisResults: {}
+    }],
+    aiAssessment: {
+      recommendation: 'MANUAL_REVIEW',
+      confidence: 'MEDIUM',
+      explanation: 'Analysis in progress'
     },
     humanAssessment: {
       assessor: null,
@@ -170,6 +261,12 @@ const analyzeAndCreateClaim = async ({ uploadedFile, claimData, user }) => {
       reason: '',
       decisionMaker: null,
       timestamp: null
+    },
+    processingError: {
+      message: null,
+      details: null,
+      timestamp: null,
+      retryCount: 0
     },
     auditHistory: [
       {
@@ -188,37 +285,13 @@ const analyzeAndCreateClaim = async ({ uploadedFile, claimData, user }) => {
         timestamp: new Date(),
         action: 'PROCESSING_STARTED',
         actor: {
-          id: 'SYSTEM_ML',
-          name: 'Automated Pipeline',
+          id: 'SYSTEM_JOB_RUNNER',
+          name: 'Claim Intake Dispatcher',
           role: 'SYSTEM'
         },
         previousStatus: CLAIM_STATUS.SUBMITTED,
         newStatus: CLAIM_STATUS.PROCESSING,
-        details: 'Dispatched media to computer vision and fraud models'
-      },
-      {
-        timestamp: new Date(),
-        action: 'AI_ASSESSMENT_COMPLETED',
-        actor: {
-          id: 'SYSTEM_ML',
-          name: 'InsureAuto AI Pipeline',
-          role: 'SYSTEM'
-        },
-        previousStatus: CLAIM_STATUS.PROCESSING,
-        newStatus: CLAIM_STATUS.AI_ASSESSED,
-        details: `Inference completed. AI recommendation: ${decisionData.recommendation || 'MANUAL_REVIEW'}`
-      },
-      {
-        timestamp: new Date(),
-        action: 'QUEUED_FOR_REVIEW',
-        actor: {
-          id: 'SYSTEM_ROUTER',
-          name: 'Work Distribution Engine',
-          role: 'SYSTEM'
-        },
-        previousStatus: CLAIM_STATUS.AI_ASSESSED,
-        newStatus: CLAIM_STATUS.PENDING_REVIEW,
-        details: 'Claim placed in assessor inspection queue'
+        details: 'Dispatched evidence to asynchronous multi-modal processing worker'
       }
     ],
     claimInfo: {
@@ -226,45 +299,93 @@ const analyzeAndCreateClaim = async ({ uploadedFile, claimData, user }) => {
       description: claimData.claim_description,
       location: claimData.claim_location || 'Unknown',
       policyId: claimData.policy_id || ''
-    },
-    metadata: isVideo ? (report.metadata || {}) : (damageAssessment.metadata || {}),
-    analysis: {
-      damageAssessment: {
-        severity: damageAssessment.severity || 'Unknown',
-        damagedParts: damageAssessment.damaged_parts || [],
-        description: damageAssessment.description || '',
-        recommendation: damageAssessment.recommendation || '',
-        score: damageAssessment.damage_score || damageAssessment.score || decisionData.scores?.damage || 0,
-        yoloAggregate: damageAssessment.yolo_aggregate ? {
-          areaCoverageRatio: damageAssessment.yolo_aggregate.area_coverage_ratio,
-          meanConfidence: damageAssessment.yolo_aggregate.mean_confidence,
-          totalKeyframeDetections: damageAssessment.yolo_aggregate.total_keyframe_detections
-        } : undefined
-      },
-      fraudAnalysis: {
-        overallScore: fraudAnalysis.overall_score || 0,
-        riskLevel: fraudAnalysis.risk_level || 'LOW',
-        isDuplicate: isVideo ? (fraudAnalysis.video_duplicate_check?.is_duplicate || false) : (fraudAnalysis.is_duplicate || false),
-        fraudIndicators: fraudAnalysis.fraud_indicators || []
-      },
-      consistencyAnalysis: {
-        score: consistencyAnalysis.score || decisionData.scores?.consistency || 0,
-        isConsistent: consistencyAnalysis.is_consistent !== undefined ? consistencyAnalysis.is_consistent : true,
-        explanation: consistencyAnalysis.explanation || ''
-      }
-    },
-    annotatedImagePath: mlResult.annotated_image_url || mlResult.primary_annotated_keyframe_url,
-    primaryAnnotatedKeyframeUrl: mlResult.primary_annotated_keyframe_url,
-    keyframeSelection: isVideo ? {
-      primaryPath: videoEvidence.primary_annotated_keyframe_url || mlResult.primary_annotated_keyframe_url,
-      secondaryPath: videoEvidence.secondary_annotated_keyframe_url,
-      ranking: mlResult.keyframe_timeline || []
-    } : undefined,
-    keyframeTimeline: mlResult.keyframe_timeline || []
+    }
   });
 
   await claim.save();
+
+  setImmediate(() => {
+    processClaimJob(claim.claimId);
+  });
+
   return claim;
+};
+
+const retryClaimProcessing = async (identifier, user) => {
+  const claim = await Claim.findOne({
+    $or: [{ claimId: identifier }, { jobId: identifier }]
+  });
+
+  if (!claim) {
+    throw ApiError.notFound('Claim not found');
+  }
+
+  if (['APPROVED', 'REJECTED', 'CLOSED'].includes(claim.status)) {
+    throw ApiError.badRequest(`Cannot retry processing for claim in terminal or resolved status '${claim.status}'`);
+  }
+
+  const actorId = user ? user.userId : 'SYSTEM_RETRY';
+  const actorName = user ? user.name : 'Assessor Console';
+  const actorRole = user ? user.role : 'ASSESSOR';
+
+  claim.status = CLAIM_STATUS.PROCESSING;
+
+  if (claim.evidence && claim.evidence.length > 0) {
+    claim.evidence[0].processingStatus = 'PROCESSING';
+    claim.evidence[0].error = null;
+  }
+
+  claim.processingError = {
+    message: null,
+    details: null,
+    timestamp: null,
+    retryCount: (claim.processingError?.retryCount || 0) + 1
+  };
+
+  claim.auditHistory.push({
+    timestamp: new Date(),
+    action: 'PROCESSING_RETRY_INITIATED',
+    actor: {
+      id: actorId,
+      name: actorName,
+      role: actorRole
+    },
+    previousStatus: claim.status,
+    newStatus: CLAIM_STATUS.PROCESSING,
+    details: 'Assessor requested reprocessing of evidence analysis pipeline'
+  });
+
+  await claim.save();
+
+  setImmediate(() => {
+    processClaimJob(claim.claimId);
+  });
+
+  return claim;
+};
+
+const getProcessingStatus = async (identifier) => {
+  const claim = await Claim.findOne({
+    $or: [{ claimId: identifier }, { jobId: identifier }]
+  });
+
+  if (!claim) {
+    throw ApiError.notFound('Claim not found');
+  }
+
+  const evidenceItem = claim.evidence && claim.evidence.length > 0 ? claim.evidence[0] : null;
+
+  return {
+    claimId: claim.claimId,
+    jobId: claim.jobId,
+    status: claim.status,
+    processingStatus: evidenceItem?.processingStatus || 'COMPLETED',
+    processingError: claim.processingError,
+    evidence: claim.evidence,
+    aiAssessment: claim.status === CLAIM_STATUS.AI_ASSESSED || claim.aiAssessment?.scores?.damage !== undefined
+      ? claim.aiAssessment
+      : null
+  };
 };
 
 const getClaims = async ({ status, recommendation, policy_id, claim_type, search, limit, skip }) => {
@@ -510,7 +631,10 @@ const getClaimStats = async () => {
 };
 
 module.exports = {
-  analyzeAndCreateClaim,
+  createClaimAndDispatch,
+  processClaimJob,
+  retryClaimProcessing,
+  getProcessingStatus,
   getClaims,
   getClaimById,
   updateClaimStatus,

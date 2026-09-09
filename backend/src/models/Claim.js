@@ -14,8 +14,8 @@ const CLAIM_STATUS = {
 
 const ALLOWED_TRANSITIONS = {
   SUBMITTED: ['PROCESSING', 'CLOSED'],
-  PROCESSING: ['AI_ASSESSED', 'PENDING_REVIEW', 'CLOSED'],
-  AI_ASSESSED: ['PENDING_REVIEW', 'CLOSED'],
+  PROCESSING: ['PROCESSING', 'AI_ASSESSED', 'PENDING_REVIEW', 'CLOSED'],
+  AI_ASSESSED: ['PENDING_REVIEW', 'UNDER_REVIEW', 'CLOSED'],
   PENDING_REVIEW: ['UNDER_REVIEW', 'NEEDS_INFORMATION', 'CLOSED'],
   UNDER_REVIEW: ['APPROVED', 'REJECTED', 'NEEDS_INFORMATION', 'CLOSED'],
   NEEDS_INFORMATION: ['PROCESSING', 'PENDING_REVIEW', 'UNDER_REVIEW', 'CLOSED'],
@@ -34,6 +34,10 @@ const evidenceSchema = new mongoose.Schema({
     type: String,
     required: true
   },
+  rawFilePath: {
+    type: String,
+    default: null
+  },
   uploadTimestamp: {
     type: Date,
     default: Date.now
@@ -45,7 +49,11 @@ const evidenceSchema = new mongoose.Schema({
   processingStatus: {
     type: String,
     enum: ['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED'],
-    default: 'COMPLETED'
+    default: 'PROCESSING'
+  },
+  error: {
+    type: String,
+    default: null
   },
   analysisResults: {
     type: mongoose.Schema.Types.Mixed,
@@ -170,6 +178,13 @@ const auditEntrySchema = new mongoose.Schema({
   details: { type: String, default: '' }
 }, { _id: false });
 
+const processingErrorSchema = new mongoose.Schema({
+  message: { type: String, default: null },
+  details: { type: mongoose.Schema.Types.Mixed, default: null },
+  timestamp: { type: Date, default: null },
+  retryCount: { type: Number, default: 0 }
+}, { _id: false });
+
 const claimSchema = new mongoose.Schema({
   claimId: {
     type: String,
@@ -230,6 +245,10 @@ const claimSchema = new mongoose.Schema({
     type: [auditEntrySchema],
     default: []
   },
+  processingError: {
+    type: processingErrorSchema,
+    default: () => ({ message: null, details: null, timestamp: null, retryCount: 0 })
+  },
   claimInfo: {
     date: String,
     description: String,
@@ -252,11 +271,13 @@ const claimSchema = new mongoose.Schema({
 
 claimSchema.methods.canTransitionTo = function(targetStatus) {
   const current = this.status || CLAIM_STATUS.SUBMITTED;
+  if (current === targetStatus) return true;
   const allowed = ALLOWED_TRANSITIONS[current] || [];
   return allowed.includes(targetStatus);
 };
 
 claimSchema.statics.canTransition = function(currentStatus, targetStatus) {
+  if (currentStatus === targetStatus) return true;
   const allowed = ALLOWED_TRANSITIONS[currentStatus] || [];
   return allowed.includes(targetStatus);
 };
@@ -281,9 +302,11 @@ claimSchema.pre('validate', function(next) {
 
 claimSchema.pre('save', function(next) {
   if (!this.isNew && this.isModified('status') && this._originalStatus && ALLOWED_TRANSITIONS[this._originalStatus]) {
-    const allowed = ALLOWED_TRANSITIONS[this._originalStatus] || [];
-    if (!allowed.includes(this.status)) {
-      return next(new Error(`Invalid lifecycle state transition from ${this._originalStatus} to ${this.status}`));
+    if (this._originalStatus !== this.status) {
+      const allowed = ALLOWED_TRANSITIONS[this._originalStatus] || [];
+      if (!allowed.includes(this.status)) {
+        return next(new Error(`Invalid lifecycle state transition from ${this._originalStatus} to ${this.status}`));
+      }
     }
   }
   this._originalStatus = this.status;

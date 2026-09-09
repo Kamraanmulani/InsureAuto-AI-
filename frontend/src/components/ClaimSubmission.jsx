@@ -92,10 +92,10 @@ const ClaimSubmission = ({ onClaimSubmitted }) => {
       submitData.append('vehicle_model', formData.vehicle_model);
       submitData.append('vehicle_year', formData.vehicle_year);
 
-      setProgressStage('Running multi-modal AI damage assessment and fraud verification...');
+      setProgressStage('Uploading evidence media...');
       const response = await claimAPI.submitClaim(submitData);
 
-      toast.success('Claim intake and assessment completed successfully.');
+      toast.success('Claim created. AI assessment pipeline running in background.');
 
       if (onClaimSubmitted && response.claim) {
         onClaimSubmitted(response.claim);

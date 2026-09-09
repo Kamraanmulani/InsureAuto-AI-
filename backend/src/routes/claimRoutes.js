@@ -3,6 +3,8 @@ const router = express.Router();
 const { upload } = require('../middleware/uploadMiddleware');
 const {
   analyzeClaim,
+  retryProcessing,
+  getProcessingStatus,
   getClaims,
   getClaimById,
   updateClaimStatus,
@@ -20,6 +22,8 @@ router.use(verifyToken);
 router.use(requireRole('ASSESSOR', 'ADMIN'));
 
 router.post('/analyze', upload.any(), validateClaimAnalyze, analyzeClaim);
+router.post('/:jobId/retry', retryProcessing);
+router.get('/:jobId/processing-status', getProcessingStatus);
 router.get('/', getClaims);
 router.get('/stats/summary', getClaimStats);
 router.get('/:jobId', getClaimById);

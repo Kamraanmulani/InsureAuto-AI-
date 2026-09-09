@@ -37,9 +37,19 @@ export const claimAPI = {
       headers: {
         'Content-Type': 'multipart/form-data'
       },
-      timeout: 240000,
+      timeout: 30000,
       onUploadProgress
     });
+    return response.data;
+  },
+
+  getProcessingStatus: async (jobId) => {
+    const response = await api.get(`/claims/${jobId}/processing-status`);
+    return response.data;
+  },
+
+  retryProcessing: async (jobId) => {
+    const response = await api.post(`/claims/${jobId}/retry`);
     return response.data;
   },
 

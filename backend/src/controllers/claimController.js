@@ -6,13 +6,43 @@ const analyzeClaim = async (req, res, next) => {
   const uploadedFile = req.files && req.files.length > 0 ? req.files[0] : null;
 
   try {
-    const claim = await claimService.analyzeAndCreateClaim({
+    const claim = await claimService.createClaimAndDispatch({
       uploadedFile,
       claimData: req.body,
       user: req.user
     });
 
-    return sendSuccess(res, 200, { claim }, 'Claim analyzed and recorded successfully');
+    return sendSuccess(res, 201, {
+      claim,
+      jobId: claim.jobId,
+      claimId: claim.claimId,
+      status: claim.status,
+      processingStatus: 'PROCESSING'
+    }, 'Claim created and dispatched for asynchronous analysis');
+  } catch (error) {
+    next(error);
+  }
+};
+
+const retryProcessing = async (req, res, next) => {
+  try {
+    const claim = await claimService.retryClaimProcessing(req.params.jobId, req.user);
+    return sendSuccess(res, 200, {
+      claim,
+      jobId: claim.jobId,
+      claimId: claim.claimId,
+      status: claim.status,
+      processingStatus: 'PROCESSING'
+    }, 'Claim analysis reprocessing initiated');
+  } catch (error) {
+    next(error);
+  }
+};
+
+const getProcessingStatus = async (req, res, next) => {
+  try {
+    const statusData = await claimService.getProcessingStatus(req.params.jobId);
+    return sendSuccess(res, 200, statusData);
   } catch (error) {
     next(error);
   }
@@ -89,6 +119,8 @@ const getClaimStats = async (req, res, next) => {
 
 module.exports = {
   analyzeClaim,
+  retryProcessing,
+  getProcessingStatus,
   getClaims,
   getClaimById,
   updateClaimStatus,
