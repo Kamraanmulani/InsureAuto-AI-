@@ -73,7 +73,7 @@ const policySchema = new mongoose.Schema({
   policyNumber: { type: String, default: 'POL-UNASSIGNED' },
   policyType: { type: String, default: 'Comprehensive Motor' },
   coverageType: { type: String, default: 'Standard Collision' },
-  deductible: { type: String, default: '$500' },
+  deductible: { type: String, default: '₹5,000' },
   effectiveDate: { type: String, default: '' }
 }, { _id: false });
 

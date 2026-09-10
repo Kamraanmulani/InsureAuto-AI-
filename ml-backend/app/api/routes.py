@@ -340,6 +340,17 @@ async def get_annotated_image(job_id: str):
         if os.path.exists(path):
             return FileResponse(path, media_type="image/jpeg")
 
+    keyframes_dir = "data/uploads/keyframes"
+    if os.path.exists(keyframes_dir):
+        matching = [
+            os.path.join(keyframes_dir, f)
+            for f in os.listdir(keyframes_dir)
+            if f.endswith("keyframe_primary.jpg")
+        ]
+        if matching:
+            matching.sort(key=os.path.getmtime, reverse=True)
+            return FileResponse(matching[0], media_type="image/jpeg")
+
     raise HTTPException(status_code=404, detail="Annotated image not found")
 
 
@@ -347,6 +358,18 @@ async def get_annotated_image(job_id: str):
 async def get_annotated_keyframe(job_id: str, frame_type: str = "primary"):
     filename = f"{job_id}_keyframe_{frame_type}.jpg"
     path = os.path.join("data/uploads/keyframes", filename)
-    if not os.path.exists(path):
-        raise HTTPException(status_code=404, detail=f"Annotated keyframe ({frame_type}) not found")
-    return FileResponse(path, media_type="image/jpeg")
+    if os.path.exists(path):
+        return FileResponse(path, media_type="image/jpeg")
+
+    keyframes_dir = "data/uploads/keyframes"
+    if os.path.exists(keyframes_dir):
+        matching = [
+            os.path.join(keyframes_dir, f)
+            for f in os.listdir(keyframes_dir)
+            if f.endswith(f"keyframe_{frame_type}.jpg")
+        ]
+        if matching:
+            matching.sort(key=os.path.getmtime, reverse=True)
+            return FileResponse(matching[0], media_type="image/jpeg")
+
+    raise HTTPException(status_code=404, detail=f"Annotated keyframe ({frame_type}) not found")

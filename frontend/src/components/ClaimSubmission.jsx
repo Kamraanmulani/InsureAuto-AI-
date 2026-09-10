@@ -91,7 +91,6 @@ const ClaimSubmission = ({ onClaimSubmitted }) => {
         } else {
           submitData.append('image', item.file);
         }
-        submitData.append('media', item.file);
       });
       submitData.append('claim_date', formData.claim_date);
       submitData.append('incident_time', formData.incident_time);
@@ -391,9 +390,25 @@ const ClaimSubmission = ({ onClaimSubmitted }) => {
         </div>
 
         {loading && (
-          <div className="bg-slate-50 border border-slate-200 rounded p-3 text-xs text-slate-600 flex items-center gap-2">
-            <span className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></span>
-            <span>{progressStage}</span>
+          <div className="bg-blue-50/60 border border-blue-200 rounded-lg p-4 space-y-3 text-xs">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin shrink-0"></span>
+                <span className="font-semibold text-blue-950">
+                  {mediaFiles.some(m => m.isVideo) ? 'Uploading & Processing Video Walk-Around...' : 'Uploading & Processing Damage Media...'}
+                </span>
+              </div>
+              <span className="font-mono text-blue-700 font-bold text-[11px]">Processing Pipeline Active</span>
+            </div>
+
+            <div className="w-full bg-blue-100 rounded-full h-2 overflow-hidden">
+              <div className="h-2 rounded-full bg-gradient-to-r from-blue-600 via-indigo-600 to-emerald-500 w-4/5 animate-pulse transition-all duration-700"></div>
+            </div>
+
+            <div className="flex items-center justify-between text-[11px] text-blue-800">
+              <span>{progressStage || 'Initializing neural vision inference...'}</span>
+              <span className="text-slate-500">Auto-redirecting to live workspace</span>
+            </div>
           </div>
         )}
 

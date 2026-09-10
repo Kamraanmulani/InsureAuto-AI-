@@ -106,7 +106,7 @@ const migrateLegacyClaims = async () => {
           policyNumber: claim.claimInfo?.policyId || "POL-UNASSIGNED",
           policyType: "Comprehensive Motor",
           coverageType: "Standard Collision",
-          deductible: "$500",
+          deductible: "₹5,000",
           effectiveDate: "Jan 2026",
         };
       }

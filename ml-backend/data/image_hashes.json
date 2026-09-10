@@ -1,1 +1,10 @@
-[]
+[
+  {
+    "job_id": "88992dd7-8078-4e3c-99c1-cf0d48592403",
+    "timestamp": "2026-09-10T09:57:34.251792",
+    "phash": "a903606d9fd4d46b",
+    "dhash": "c7d7e8742b171707",
+    "whash": "00017cff9bc3c3e3",
+    "average_hash": "00217cff9bc3c3e3"
+  }
+]

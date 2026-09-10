@@ -1,4 +1,5 @@
 const fs = require('fs');
+const path = require('path');
 const Claim = require('../models/Claim');
 const { CLAIM_STATUS } = require('../models/Claim');
 const ApiError = require('../utils/apiError');
@@ -110,12 +111,14 @@ const processClaimJob = async (identifier) => {
       supportingEvidence: mlResult.keyframe_timeline || []
     };
 
-    if (evidenceItem) {
-      evidenceItem.processingStatus = 'COMPLETED';
-      evidenceItem.error = null;
-      evidenceItem.fileReference = mlResult.primary_annotated_keyframe_url || mlResult.annotated_image_url || evidenceItem.fileReference;
-      evidenceItem.metadata = isVideo ? (report.metadata || {}) : (damageAssessment.metadata || {});
-      evidenceItem.analysisResults = {
+    if (primaryEvidence) {
+      primaryEvidence.processingStatus = 'COMPLETED';
+      primaryEvidence.error = null;
+      if (primaryEvidence.type !== 'VIDEO') {
+        primaryEvidence.fileReference = mlResult.annotated_image_url || mlResult.primary_annotated_keyframe_url || primaryEvidence.fileReference;
+      }
+      primaryEvidence.metadata = isVideo ? (report.metadata || {}) : (damageAssessment.metadata || {});
+      primaryEvidence.analysisResults = {
         keyframeRanking: mlResult.keyframe_timeline || videoEvidence.keyframe_timeline || [],
         damageAssessment,
         fraudAnalysis,
@@ -230,7 +233,7 @@ const createClaimAndDispatch = async ({ uploadedFiles, uploadedFile, claimData, 
       policyNumber: claimData.policy_id || 'POL-UNASSIGNED',
       policyType: 'Comprehensive Motor Policy',
       coverageType: 'Full Collision & Comprehensive',
-      deductible: '$500',
+      deductible: '₹5,000',
       effectiveDate: 'Jan 2026'
     },
     vehicle: {
@@ -249,7 +252,7 @@ const createClaimAndDispatch = async ({ uploadedFiles, uploadedFile, claimData, 
     },
     evidence: files.map(file => ({
       type: isVideoFile(file) ? 'VIDEO' : 'PHOTO',
-      fileReference: file.path,
+      fileReference: `/uploads/${path.basename(file.path)}`,
       rawFilePath: file.path,
       originalName: file.originalname,
       uploadTimestamp: new Date(),

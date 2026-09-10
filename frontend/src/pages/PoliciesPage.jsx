@@ -37,7 +37,7 @@ const PoliciesPage = () => {
           ? `${claim.vehicle.year || ''} ${claim.vehicle.make || ''} ${claim.vehicle.model || ''}`.trim() || 'Vehicle on Record'
           : (claim.metadata?.vehicleInfo || 'Vehicle on Record'),
         coverage: claim.policy?.coverageType || 'Standard Comprehensive',
-        deductible: claim.policy?.deductible || '$500',
+        deductible: String(claim.policy?.deductible || '₹5,000').replace(/\$/g, '₹'),
         status: 'Active',
         term: claim.policy?.effectiveDate ? `${claim.policy.effectiveDate} – Present` : 'Annual Term',
         claims: []
