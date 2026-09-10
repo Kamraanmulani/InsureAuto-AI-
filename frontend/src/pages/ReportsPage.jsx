@@ -25,34 +25,39 @@ const ReportsPage = () => {
 
   const totalClaims = claims.length;
 
-  const reviewedClaims = claims.filter(c => c.assessorDecision);
+  const reviewedClaims = claims.filter(c => c.humanAssessment?.action || c.assessorDecision);
   let agreementMetric = 'No data';
   if (reviewedClaims.length > 0) {
-    const matches = reviewedClaims.filter(c => c.assessorDecision.newRecommendation === c.decision?.recommendation).length;
+    const matches = reviewedClaims.filter(c => {
+      const assessorChoice = c.humanAssessment?.action || c.assessorDecision?.newRecommendation;
+      const aiChoice = c.aiAssessment?.recommendation || c.decision?.recommendation;
+      return assessorChoice === aiChoice;
+    }).length;
     agreementMetric = `${Math.round((matches / reviewedClaims.length) * 100)}% (${reviewedClaims.length} reviewed)`;
   }
 
   let avgDamageScore = 'N/A';
   if (totalClaims > 0) {
-    const sum = claims.reduce((acc, c) => acc + (c.decision?.scores?.damage || 0), 0);
+    const sum = claims.reduce((acc, c) => acc + (c.aiAssessment?.scores?.damage || c.decision?.scores?.damage || 0), 0);
     avgDamageScore = `${(sum / totalClaims).toFixed(1)} / 10`;
   }
 
-  const reviewWorkloadCount = claims.filter(c =>
-    c.decision?.recommendation === 'MANUAL_REVIEW' || c.status === 'REVIEW_REQUIRED'
-  ).length;
+  const reviewWorkloadCount = claims.filter(c => {
+    const rec = c.aiAssessment?.recommendation || c.decision?.recommendation;
+    return rec === 'MANUAL_REVIEW' || ['PENDING_REVIEW', 'UNDER_REVIEW', 'REVIEW_REQUIRED'].includes(c.status);
+  }).length;
 
   const outcomeCounts = [
-    { name: 'Approved', value: claims.filter(c => c.decision?.recommendation === 'APPROVE').length },
+    { name: 'Approved', value: claims.filter(c => (c.aiAssessment?.recommendation || c.decision?.recommendation) === 'APPROVE' || c.status === 'APPROVED').length },
     { name: 'Review Required', value: reviewWorkloadCount },
-    { name: 'Rejected', value: claims.filter(c => c.decision?.recommendation === 'REJECT').length },
-    { name: 'Processing', value: claims.filter(c => !c.decision?.recommendation).length }
+    { name: 'Rejected', value: claims.filter(c => (c.aiAssessment?.recommendation || c.decision?.recommendation) === 'REJECT' || c.status === 'REJECTED').length },
+    { name: 'Processing', value: claims.filter(c => ['SUBMITTED', 'PROCESSING', 'AI_ASSESSED'].includes(c.status)).length }
   ];
 
   const riskCounts = [
-    { name: 'Low (0-3)', count: claims.filter(c => (c.decision?.scores?.fraud || 0) < 4).length },
-    { name: 'Medium (4-6)', count: claims.filter(c => (c.decision?.scores?.fraud || 0) >= 4 && (c.decision?.scores?.fraud || 0) < 7).length },
-    { name: 'High (7-10)', count: claims.filter(c => (c.decision?.scores?.fraud || 0) >= 7).length }
+    { name: 'Low (0-3)', count: claims.filter(c => (c.aiAssessment?.scores?.fraud || c.decision?.scores?.fraud || 0) < 4).length },
+    { name: 'Medium (4-6)', count: claims.filter(c => (c.aiAssessment?.scores?.fraud || c.decision?.scores?.fraud || 0) >= 4 && (c.aiAssessment?.scores?.fraud || c.decision?.scores?.fraud || 0) < 7).length },
+    { name: 'High (7-10)', count: claims.filter(c => (c.aiAssessment?.scores?.fraud || c.decision?.scores?.fraud || 0) >= 7).length }
   ];
 
   return (

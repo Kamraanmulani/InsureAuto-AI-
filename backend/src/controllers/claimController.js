@@ -3,10 +3,12 @@ const { sendSuccess } = require('../utils/apiResponse');
 const { parsePagination } = require('../utils/validators');
 
 const analyzeClaim = async (req, res, next) => {
-  const uploadedFile = req.files && req.files.length > 0 ? req.files[0] : null;
+  const uploadedFiles = req.files && req.files.length > 0 ? req.files : [];
+  const uploadedFile = uploadedFiles.length > 0 ? uploadedFiles[0] : null;
 
   try {
     const claim = await claimService.createClaimAndDispatch({
+      uploadedFiles,
       uploadedFile,
       claimData: req.body,
       user: req.user

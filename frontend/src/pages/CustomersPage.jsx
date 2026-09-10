@@ -3,14 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { Search, X } from 'lucide-react';
 import { claimAPI } from '../services/api';
 
-const DEFAULT_CUSTOMERS = [
-  { id: 'CUST-101', name: 'Robert Vance', policy: 'POL-4402', email: 'r.vance@example.com', phone: '+1 (555) 234-8901' },
-  { id: 'CUST-102', name: 'Sarah Jenkins', policy: 'POL-8831', email: 's.jenkins@example.com', phone: '+1 (555) 345-9012' },
-  { id: 'CUST-103', name: 'David Chen', policy: 'POL-1920', email: 'd.chen@example.com', phone: '+1 (555) 456-0123' },
-  { id: 'CUST-104', name: 'Elena Rostova', policy: 'POL-3319', email: 'e.rostova@example.com', phone: '+1 (555) 567-1234' },
-  { id: 'CUST-105', name: 'Marcus Bell', policy: 'POL-7722', email: 'm.bell@example.com', phone: '+1 (555) 678-2345' }
-];
-
 const CustomersPage = () => {
   const navigate = useNavigate();
   const [claims, setClaims] = useState([]);
@@ -34,15 +26,6 @@ const CustomersPage = () => {
   }, []);
 
   const customerMap = {};
-  DEFAULT_CUSTOMERS.forEach((c) => {
-    customerMap[c.policy] = {
-      ...c,
-      claims: [],
-      openReviews: 0,
-      maxRisk: 'Low',
-      latestClaimDate: 'N/A'
-    };
-  });
 
   claims.forEach((claim) => {
     const policyId = claim.policy?.policyNumber || claim.claimInfo?.policyId || 'POL-UNASSIGNED';

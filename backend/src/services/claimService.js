@@ -20,16 +20,18 @@ const processClaimJob = async (identifier) => {
       return claim;
     }
 
-    const evidenceItem = claim.evidence && claim.evidence.length > 0 ? claim.evidence[0] : null;
-    const filePath = evidenceItem?.rawFilePath || evidenceItem?.fileReference;
+    const matchedVideo = claim.evidence && claim.evidence.find(e => e.type === 'VIDEO');
+    const matchedPhoto = claim.evidence && claim.evidence.find(e => e.type === 'PHOTO');
+    const primaryEvidence = matchedVideo || matchedPhoto || (claim.evidence && claim.evidence[0]);
+    const filePath = primaryEvidence?.rawFilePath || primaryEvidence?.fileReference;
 
     if (!filePath || !fs.existsSync(filePath)) {
       throw new Error(`Evidence media file not found on disk at path: ${filePath}`);
     }
 
-    const isVideo = claim.claimType === 'VIDEO_WALK_AROUND' || (evidenceItem && evidenceItem.type === 'VIDEO');
+    const isVideo = primaryEvidence.type === 'VIDEO';
 
-    const mlResult = await mlService.forwardToML(filePath, evidenceItem.originalName || 'media_file', isVideo, {
+    const mlResult = await mlService.forwardToML(filePath, primaryEvidence.originalName || 'media_file', isVideo, {
       claim_date: claim.incident?.date,
       claim_description: claim.incident?.description,
       claim_location: claim.incident?.location,
@@ -137,6 +139,12 @@ const processClaimJob = async (identifier) => {
       retryCount: claim.processingError?.retryCount || 0
     };
 
+    if (claim.evidence && claim.evidence.length > 0) {
+      claim.evidence.forEach(item => {
+        item.processingStatus = 'COMPLETED';
+      });
+    }
+
     const previousStatus = claim.status;
     claim.status = CLAIM_STATUS.AI_ASSESSED;
 
@@ -161,8 +169,10 @@ const processClaimJob = async (identifier) => {
       const errorDetail = error.code === 'ECONNREFUSED' ? 'ML service connection refused on port 8000' : (error.response?.data || error.code || null);
 
       if (claim.evidence && claim.evidence.length > 0) {
-        claim.evidence[0].processingStatus = 'FAILED';
-        claim.evidence[0].error = errorMsg;
+        claim.evidence.forEach(item => {
+          item.processingStatus = 'FAILED';
+          item.error = errorMsg;
+        });
       }
 
       claim.processingError = {
@@ -191,12 +201,13 @@ const processClaimJob = async (identifier) => {
   }
 };
 
-const createClaimAndDispatch = async ({ uploadedFile, claimData, user }) => {
-  if (!uploadedFile) {
+const createClaimAndDispatch = async ({ uploadedFiles, uploadedFile, claimData, user }) => {
+  const files = uploadedFiles && uploadedFiles.length > 0 ? uploadedFiles : (uploadedFile ? [uploadedFile] : []);
+  if (files.length === 0) {
     throw ApiError.badRequest('Photo or walk-around video file is required');
   }
 
-  const isVideo = isVideoFile(uploadedFile);
+  const isVideo = files.some(file => isVideoFile(file));
   const rawJobId = `job-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 7)}`;
   const claimId = `CLM-${rawJobId.slice(4).toUpperCase()}`;
 
@@ -236,16 +247,16 @@ const createClaimAndDispatch = async ({ uploadedFile, claimData, user }) => {
       incidentType: claimData.incident_type || 'Collision',
       description: claimData.claim_description
     },
-    evidence: [{
-      type: isVideo ? 'VIDEO' : 'PHOTO',
-      fileReference: uploadedFile.path,
-      rawFilePath: uploadedFile.path,
-      originalName: uploadedFile.originalname,
+    evidence: files.map(file => ({
+      type: isVideoFile(file) ? 'VIDEO' : 'PHOTO',
+      fileReference: file.path,
+      rawFilePath: file.path,
+      originalName: file.originalname,
       uploadTimestamp: new Date(),
       metadata: {},
       processingStatus: 'PROCESSING',
       analysisResults: {}
-    }],
+    })),
     aiAssessment: {
       recommendation: 'MANUAL_REVIEW',
       confidence: 'MEDIUM',

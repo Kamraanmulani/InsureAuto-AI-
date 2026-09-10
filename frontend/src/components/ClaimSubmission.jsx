@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { UploadCloud, X, Film, Camera } from 'lucide-react';
@@ -6,7 +6,7 @@ import { claimAPI } from '../services/api';
 
 const ClaimSubmission = ({ onClaimSubmitted }) => {
   const navigate = useNavigate();
-  const [submissionType, setSubmissionType] = useState('video');
+  const fileInputRef = useRef(null);
   const [formData, setFormData] = useState({
     claim_date: new Date().toISOString().split('T')[0],
     incident_time: '14:30',
@@ -22,44 +22,56 @@ const ClaimSubmission = ({ onClaimSubmitted }) => {
     vehicle_model: '',
     vehicle_year: new Date().getFullYear().toString()
   });
-  const [mediaFile, setMediaFile] = useState(null);
-  const [mediaPreview, setMediaPreview] = useState(null);
+  const [mediaFiles, setMediaFiles] = useState([]);
+  const [isDragging, setIsDragging] = useState(false);
   const [loading, setLoading] = useState(false);
   const [progressStage, setProgressStage] = useState('');
 
-  const handleTypeToggle = (type) => {
-    if (type !== submissionType) {
-      setSubmissionType(type);
-      setMediaFile(null);
-      if (mediaPreview) URL.revokeObjectURL(mediaPreview);
-      setMediaPreview(null);
+  useEffect(() => {
+    return () => {
+      mediaFiles.forEach((item) => {
+        if (item.previewUrl) {
+          URL.revokeObjectURL(item.previewUrl);
+        }
+      });
+    };
+  }, [mediaFiles]);
+
+  const handleFiles = (incomingFiles) => {
+    if (!incomingFiles || incomingFiles.length === 0) return;
+    const added = [];
+    Array.from(incomingFiles).forEach((file) => {
+      if (file.size > 50 * 1024 * 1024) {
+        toast.error(`${file.name} exceeds the 50 MB maximum size limit.`);
+        return;
+      }
+      const isVideo = file.type.startsWith('video/') || /\.(mp4|mov|avi|webm|mkv)$/i.test(file.name);
+      added.push({
+        id: `${file.name}-${file.size}-${Math.random().toString(36).substring(2, 9)}`,
+        file,
+        isVideo,
+        previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : null
+      });
+    });
+    if (added.length > 0) {
+      setMediaFiles((prev) => [...prev, ...added]);
     }
   };
 
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    if (file.size > 50 * 1024 * 1024) {
-      toast.error('File exceeds the 50 MB maximum size limit.');
-      return;
-    }
-
-    setMediaFile(file);
-    const objectUrl = URL.createObjectURL(file);
-    setMediaPreview(objectUrl);
-  };
-
-  const handleRemoveMedia = () => {
-    setMediaFile(null);
-    if (mediaPreview) URL.revokeObjectURL(mediaPreview);
-    setMediaPreview(null);
+  const handleRemoveMedia = (idToRemove) => {
+    setMediaFiles((prev) => {
+      const target = prev.find((item) => item.id === idToRemove);
+      if (target && target.previewUrl) {
+        URL.revokeObjectURL(target.previewUrl);
+      }
+      return prev.filter((item) => item.id !== idToRemove);
+    });
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!mediaFile) {
-      toast.error(`Please select a ${submissionType === 'video' ? 'walk-around video' : 'damage photo'}.`);
+    if (mediaFiles.length === 0) {
+      toast.error('Please upload at least one damage photo or walk-around video.');
       return;
     }
 
@@ -73,11 +85,14 @@ const ClaimSubmission = ({ onClaimSubmitted }) => {
 
     try {
       const submitData = new FormData();
-      if (submissionType === 'video') {
-        submitData.append('video', mediaFile);
-      } else {
-        submitData.append('image', mediaFile);
-      }
+      mediaFiles.forEach((item) => {
+        if (item.isVideo) {
+          submitData.append('video', item.file);
+        } else {
+          submitData.append('image', item.file);
+        }
+        submitData.append('media', item.file);
+      });
       submitData.append('claim_date', formData.claim_date);
       submitData.append('incident_time', formData.incident_time);
       submitData.append('incident_type', formData.incident_type);
@@ -116,76 +131,126 @@ const ClaimSubmission = ({ onClaimSubmitted }) => {
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
-
       <form onSubmit={handleSubmit} className="bg-white border border-slate-200 rounded p-6 space-y-6">
         <div>
-          <label className="block text-xs font-semibold text-slate-800 mb-2">Evidence Submission Mode</label>
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={() => handleTypeToggle('video')}
-              className={`p-3 rounded border text-left flex items-start gap-3 transition ${
-                submissionType === 'video'
-                  ? 'border-blue-600 bg-blue-50/50'
-                  : 'border-slate-200 bg-white hover:bg-slate-50'
-              }`}
-            >
-              <Film size={18} className={submissionType === 'video' ? 'text-blue-600' : 'text-slate-400'} />
-              <div>
-                <span className="text-xs font-semibold text-slate-900 block">Walk-Around Video</span>
-                <span className="text-[11px] text-slate-500 block mt-0.5">Multi-angle video file (MP4, MOV)</span>
-              </div>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleTypeToggle('image')}
-              className={`p-3 rounded border text-left flex items-start gap-3 transition ${
-                submissionType === 'image'
-                  ? 'border-blue-600 bg-blue-50/50'
-                  : 'border-slate-200 bg-white hover:bg-slate-50'
-              }`}
-            >
-              <Camera size={18} className={submissionType === 'image' ? 'text-blue-600' : 'text-slate-400'} />
-              <div>
-                <span className="text-xs font-semibold text-slate-900 block">Single Damage Photo</span>
-                <span className="text-[11px] text-slate-500 block mt-0.5">High-resolution image (JPG, PNG)</span>
-              </div>
-            </button>
+          <div className="flex items-center justify-between mb-2">
+            <div>
+              <label className="block text-xs font-semibold text-slate-800">Media Evidence</label>
+              <span className="text-[11px] text-slate-500 block mt-0.5">
+                Upload damage photos, walk-around videos, or both.
+              </span>
+            </div>
+            {mediaFiles.length > 0 && (
+              <span className="text-[11px] font-medium text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
+                {mediaFiles.length} {mediaFiles.length === 1 ? 'file' : 'files'} selected
+              </span>
+            )}
           </div>
-        </div>
 
-        <div>
-          <label className="block text-xs font-semibold text-slate-800 mb-2">Media File</label>
-          {!mediaPreview ? (
-            <label className="border-2 border-dashed border-slate-200 rounded p-8 flex flex-col items-center justify-center cursor-pointer hover:border-slate-400 bg-slate-50 transition">
-              <UploadCloud size={24} className="text-slate-400 mb-2" />
-              <span className="text-xs font-medium text-slate-700">
-                Click to upload {submissionType === 'video' ? 'walk-around video' : 'damage photo'}
+          <div
+            onDragOver={(e) => {
+              e.preventDefault();
+              setIsDragging(true);
+            }}
+            onDragLeave={(e) => {
+              e.preventDefault();
+              setIsDragging(false);
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              setIsDragging(false);
+              handleFiles(e.dataTransfer.files);
+            }}
+            onClick={() => fileInputRef.current?.click()}
+            className={`border-2 border-dashed rounded p-6 flex flex-col items-center justify-center cursor-pointer transition ${
+              isDragging
+                ? 'border-blue-500 bg-blue-50/50'
+                : 'border-slate-200 hover:border-slate-400 bg-slate-50'
+            }`}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm"
+              onChange={(e) => {
+                handleFiles(e.target.files);
+                e.target.value = '';
+              }}
+              className="hidden"
+            />
+            <UploadCloud size={28} className={isDragging ? 'text-blue-500 mb-2' : 'text-slate-400 mb-2'} />
+            <div className="text-center">
+              <span className="text-xs font-medium text-slate-700 block">
+                Click or drag & drop to upload damage photos or videos
               </span>
-              <span className="text-[11px] text-slate-400 mt-1">
-                {submissionType === 'video' ? 'MP4 or MOV up to 50 MB' : 'JPG or PNG up to 50 MB'}
+              <span className="text-[11px] text-slate-400 block mt-1">
+                Supports MP4, MOV, JPG, PNG, WEBP (up to 50 MB per file)
               </span>
-              <input
-                type="file"
-                accept={submissionType === 'video' ? 'video/mp4,video/quicktime' : 'image/jpeg,image/png'}
-                onChange={handleFileChange}
-                className="hidden"
-              />
-            </label>
-          ) : (
-            <div className="relative border border-slate-200 rounded p-3 bg-slate-50 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <span className="text-xs font-medium text-slate-800 truncate max-w-xs">{mediaFile?.name}</span>
-                <span className="text-[11px] text-slate-400">({(mediaFile?.size / (1024 * 1024)).toFixed(1)} MB)</span>
-              </div>
-              <button
-                type="button"
-                onClick={handleRemoveMedia}
-                className="p-1 text-slate-400 hover:text-slate-700 rounded"
-              >
-                <X size={16} />
-              </button>
+            </div>
+            <div className="flex items-center gap-4 mt-3 text-[11px] text-slate-500 font-medium">
+              <span className="flex items-center gap-1">
+                <Camera size={13} className="text-slate-500" /> Damage Photos
+              </span>
+              <span className="text-slate-300">•</span>
+              <span className="flex items-center gap-1">
+                <Film size={13} className="text-slate-500" /> Walk-Around Videos
+              </span>
+            </div>
+          </div>
+
+          {mediaFiles.length > 0 && (
+            <div className="mt-3 space-y-2">
+              {mediaFiles.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex items-center justify-between p-2.5 bg-white border border-slate-200 rounded text-xs"
+                >
+                  <div className="flex items-center gap-3 overflow-hidden">
+                    {item.previewUrl ? (
+                      <img
+                        src={item.previewUrl}
+                        alt="Evidence preview"
+                        className="w-10 h-10 object-cover rounded border border-slate-200 shrink-0"
+                      />
+                    ) : (
+                      <div className="w-10 h-10 rounded bg-blue-50 border border-blue-200 flex items-center justify-center shrink-0 text-blue-600">
+                        <Film size={18} />
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-slate-800 truncate max-w-xs block">
+                          {item.file.name}
+                        </span>
+                        <span
+                          className={`text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0 ${
+                            item.isVideo
+                              ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                              : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                          }`}
+                        >
+                          {item.isVideo ? 'Video' : 'Photo'}
+                        </span>
+                      </div>
+                      <span className="text-[11px] text-slate-400 block mt-0.5">
+                        {(item.file.size / (1024 * 1024)).toFixed(2)} MB
+                      </span>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleRemoveMedia(item.id);
+                    }}
+                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition"
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
+              ))}
             </div>
           )}
         </div>
